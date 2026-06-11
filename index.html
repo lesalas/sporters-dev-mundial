@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sporters Dev MUNIDIAL 2026</title>
+<title>Spoters Dev Mundial 2026</title>
 <style>
   * { box-sizing: border-box; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
   body { margin:0; background:#0d1b2a; color:#fff; padding-bottom:40px; }
@@ -17,6 +17,7 @@
   .match { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .team { flex:1; text-align:center; font-size:13px; }
   input[type=number] { width:50px; text-align:center; padding:6px; border-radius:6px; border:none; font-size:16px; }
+  input[type=number]:disabled { color:#fff; background:#415a77; opacity:1; }
   .vs { padding:0 6px; color:#778da9; font-size:12px; }
   .meta { font-size:11px; color:#778da9; margin-top:4px; text-align:center; }
   button { background:#e63946; color:#fff; border:none; padding:10px 16px; border-radius:6px; font-size:14px; cursor:pointer; width:100%; margin-top:8px; }
@@ -205,9 +206,7 @@ function calcPoints(pick, result) {
   const rh = result.home, ra = result.away;
   if (isNaN(ph) || isNaN(pa)) return 0;
   if (ph === rh && pa === ra) return 3;
-  const pickWinner = ph > pa ? 'H' : ph < pa ? 'A' : 'D';
-  const realWinner = rh > ra ? 'H' : rh < ra ? 'A' : 'D';
-  return pickWinner === realWinner ? 1 : 0;
+  return 2;
 }
 
 async function renderPartidos() {
@@ -270,21 +269,23 @@ async function renderTabla() {
     const picks = await getPicks(u);
     let total = 0;
     let exactos = 0;
+    let bol = 0;
     MATCHES.forEach(m => {
       const result = RESULTS[m.id];
       if (result && picks[m.id]) {
         const pts = calcPoints(picks[m.id], result);
         total += pts;
         if (pts === 3) exactos++;
+        else if (pts === 2) bol++;
       }
     });
-    scores.push({user:u, total, exactos});
+    scores.push({user:u, total, exactos, bol});
   }
   scores.sort((a,b) => b.total - a.total);
   let html = `<div class="card"><table>
-    <tr><th></th><th>Jugador</th><th>Exactos</th><th class="pts">Pts</th></tr>`;
+    <tr><th></th><th>Jugador</th><th>Bol.</th><th>Exactos</th><th class="pts">Pts</th></tr>`;
   scores.forEach((s,i) => {
-    html += `<tr><td class="pos">${i+1}</td><td>${s.user}${s.user===currentUser?' (tú)':''}</td><td>${s.exactos}</td><td class="pts">${s.total}</td></tr>`;
+    html += `<tr><td class="pos">${i+1}</td><td>${s.user}${s.user===currentUser?' (tú)':''}</td><td>${s.bol}</td><td>${s.exactos}</td><td class="pts">${s.total}</td></tr>`;
   });
   html += '</table></div>';
   if (scores.length === 0) html = '<div class="card">Aún no hay resultados cargados.</div>';
