@@ -150,6 +150,13 @@ async function getPicks(user) {
   } catch(e) { console.error(e); return {}; }
 }
 
+async function getAllPicks(users) {
+  const results = await Promise.all(users.map(u => getPicks(u)));
+  const map = {};
+  users.forEach((u, i) => { map[u] = results[i]; });
+  return map;
+}
+
 async function savePicks(user, picks) {
   try {
     const { db, doc, setDoc } = window._fb;
@@ -264,9 +271,10 @@ async function updatePick(matchId) {
 async function renderTabla() {
   const users = await getAllUsers();
   const RESULTS = await getResults();
+  const picksMap = await getAllPicks(users);
   const scores = [];
   for (const u of users) {
-    const picks = await getPicks(u);
+    const picks = picksMap[u];
     let total = 0;
     let exactos = 0;
     let bol = 0;
@@ -294,12 +302,12 @@ async function renderTabla() {
 
 async function renderTodos() {
   const users = await getAllUsers();
+  const picksMap = await getAllPicks(users);
   let html = '';
   for (const m of MATCHES) {
     html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b> — ${m.group}</div><table>`;
     for (const u of users) {
-      const picks = await getPicks(u);
-      const p = picks[m.id];
+      const p = picksMap[u][m.id];
       const val = p && (p.home !== '' && p.home !== undefined) ? `${p.home} - ${p.away}` : '—';
       html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td></tr>`;
     }
