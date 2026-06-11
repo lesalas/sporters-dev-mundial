@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sporters Dev MUNIDIAL 2026</title>
+<style>
+  * { box-sizing: border-box; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  body { margin:0; background:#0d1b2a; color:#fff; padding-bottom:40px; }
+  header { background:#1b263b; padding:16px; text-align:center; position:sticky; top:0; z-index:10; }
+  header h1 { margin:0; font-size:20px; }
+  .tabs { display:flex; background:#1b263b; border-bottom:1px solid #415a77; }
+  .tab { flex:1; padding:12px; text-align:center; cursor:pointer; font-size:14px; }
+  .tab.active { background:#415a77; font-weight:bold; }
+  .container { padding:12px; max-width:600px; margin:0 auto; }
+  .card { background:#1b263b; border-radius:10px; padding:12px; margin-bottom:10px; }
+  .match { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .team { flex:1; text-align:center; font-size:13px; }
+  input[type=number] { width:50px; text-align:center; padding:6px; border-radius:6px; border:none; font-size:16px; }
+  .vs { padding:0 6px; color:#778da9; font-size:12px; }
+  .meta { font-size:11px; color:#778da9; margin-top:4px; text-align:center; }
+  button { background:#e63946; color:#fff; border:none; padding:10px 16px; border-radius:6px; font-size:14px; cursor:pointer; width:100%; margin-top:8px; }
+  select, input[type=text] { width:100%; padding:10px; border-radius:6px; border:none; font-size:16px; margin-bottom:8px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:8px 4px; text-align:left; border-bottom:1px solid #415a77; }
+  th { color:#778da9; font-weight:normal; }
+  .pos { font-weight:bold; width:24px; }
+  .pts { text-align:right; font-weight:bold; color:#e63946; }
+  .saved { color:#52b788; font-size:12px; text-align:center; margin-top:4px; }
+  .hidden { display:none; }
+  .login { text-align:center; padding:40px 20px; }
+  .group-title { font-size:13px; color:#778da9; margin:16px 0 6px; padding-left:4px; }
+  .result { font-size:11px; color:#52b788; }
+</style>
+</head>
+<body>
+<header><h1>⚽ Sporters Dev MUNIDIAL 2026</h1></header>
+
+<div id="login" class="login">
+  <div class="card">
+    <p>Ingresa tu nombre para registrarte</p>
+    <input type="text" id="nameInput" placeholder="Tu nombre">
+    <button onclick="login()">Entrar</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('partidos')">Partidos</div>
+    <div class="tab" onclick="showTab('tabla')">Tabla</div>
+    <div class="tab" onclick="showTab('todos')">Todos los picks</div>
+  </div>
+  <div class="container">
+    <div style="text-align:right; font-size:12px; color:#778da9; margin-bottom:8px;">
+      Jugando como: <b id="userLabel"></b> | <a href="#" onclick="logout()" style="color:#e63946;">cambiar</a>
+    </div>
+    <div id="partidos"></div>
+    <div id="tabla" class="hidden"></div>
+    <div id="todos" class="hidden"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBfOfmikjIGX2xdN8jfsqA-DwbqtbnltY0",
+  authDomain: "sporters-dev-mundial.firebaseapp.com",
+  projectId: "sporters-dev-mundial",
+  storageBucket: "sporters-dev-mundial.firebasestorage.app",
+  messagingSenderId: "750336519011",
+  appId: "1:750336519011:web:7ffb8984b0a6593c250156"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// Exponer para el script principal (no-module)
+window._fb = { db, collection, doc, getDoc, getDocs, setDoc };
+</script>
+<script>
+// ---- Datos de partidos (fase de grupos Mundial 2026) ----
+const GROUPS = {
+  "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "Rep. Checa"],
+  "Grupo B": ["Canadá", "Bosnia y Herzegovina", "Catar", "Suiza"],
+  "Grupo C": ["Brasil", "Marruecos", "Haití", "Escocia"],
+  "Grupo D": ["Estados Unidos", "Paraguay", "Australia", "Eslovaquia"],
+  "Grupo E": ["Alemania", "Curazao", "Costa de Marfil", "Ecuador"],
+  "Grupo F": ["Países Bajos", "Japón", "Suecia", "Túnez"],
+  "Grupo G": ["Bélgica", "Egipto", "Irán", "Nueva Zelanda"],
+  "Grupo H": ["España", "Cabo Verde", "Arabia Saudí", "Uruguay"],
+  "Grupo I": ["Francia", "Senegal", "Bolivia", "Noruega"],
+  "Grupo J": ["Argentina", "Argelia", "Austria", "Jordania"],
+  "Grupo K": ["Portugal", "Rep. Dem. del Congo", "Uzbekistán", "Colombia"],
+  "Grupo L": ["Inglaterra", "Croacia", "Ghana", "Panamá"],
+};
+
+let MATCHES = [];
+let _id = 1;
+for (const [group, teams] of Object.entries(GROUPS)) {
+  const pairs = [[0,1],[2,3],[1,2],[0,3],[3,1],[2,0]];
+  pairs.forEach(([h,a]) => {
+    MATCHES.push({id:_id++, group, home:teams[h], away:teams[a], date:"jun 2026"});
+  });
+}
+MATCHES.push(
+  {id:_id++, group:"Dieciseisavos", home:"1A", away:"3C/D/E/F", date:"28 jun - 3 jul"},
+  {id:_id++, group:"Octavos", home:"GanR16-1", away:"GanR16-2", date:"4-7 jul"},
+  {id:_id++, group:"Cuartos", home:"GanR8-1", away:"GanR8-2", date:"9-11 jul"},
+  {id:_id++, group:"Semifinal", home:"GanQF1", away:"GanQF2", date:"14-15 jul"},
+  {id:_id++, group:"Final", home:"FinalistaA", away:"FinalistaB", date:"19 jul"}
+);
+
+// ---- Resultados reales (el organizador los actualiza aquí cuando se juegan) ----
+// Formato: {matchId: {home: X, away: Y}}
+const RESULTS = {
+  // 1: {home:2, away:1},
+};
+
+let currentUser = localStorage.getItem('quiniela_user') || null;
+
+function login() {
+  const name = document.getElementById('nameInput').value.trim();
+  if (!name) { alert('Escribe tu nombre'); return; }
+  currentUser = name;
+  localStorage.setItem('quiniela_user', name);
+  init();
+}
+
+function logout() {
+  localStorage.removeItem('quiniela_user');
+  currentUser = null;
+  init();
+}
+
+async function getAllUsers() {
+  try {
+    const { db, collection, getDocs } = window._fb;
+    const snap = await getDocs(collection(db, "users"));
+    return snap.docs.map(d => d.id);
+  } catch(e) { console.error(e); return []; }
+}
+
+async function getPicks(user) {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const ref = doc(db, "picks", user);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : {};
+  } catch(e) { console.error(e); return {}; }
+}
+
+async function savePicks(user, picks) {
+  try {
+    const { db, doc, setDoc } = window._fb;
+    await setDoc(doc(db, "picks", user), picks);
+    await setDoc(doc(db, "users", user), { name: user });
+  } catch(e) { console.error(e); }
+}
+
+function calcPoints(pick, result) {
+  if (!result || pick.home === '' || pick.away === '' || pick.home === undefined || pick.away === undefined) return 0;
+  const ph = parseInt(pick.home), pa = parseInt(pick.away);
+  const rh = result.home, ra = result.away;
+  if (isNaN(ph) || isNaN(pa)) return 0;
+  if (ph === rh && pa === ra) return 3;
+  const pickWinner = ph > pa ? 'H' : ph < pa ? 'A' : 'D';
+  const realWinner = rh > ra ? 'H' : rh < ra ? 'A' : 'D';
+  return pickWinner === realWinner ? 1 : 0;
+}
+
+async function renderPartidos() {
+  const picks = await getPicks(currentUser);
+  let html = '';
+  let lastGroup = '';
+  MATCHES.forEach(m => {
+    if (m.group !== lastGroup) {
+      html += `<div class="group-title">${m.group}</div>`;
+      lastGroup = m.group;
+    }
+    const p = picks[m.id] || {home:'', away:''};
+    const result = RESULTS[m.id];
+    html += `
+    <div class="card">
+      <div class="match">
+        <div class="team">${m.home}</div>
+        <input type="number" min="0" id="h_${m.id}" value="${p.home}" onchange="updatePick(${m.id})">
+        <span class="vs">-</span>
+        <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})">
+        <div class="team">${m.away}</div>
+      </div>
+      <div class="meta">${m.date}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
+      ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:document.getElementById('h_'+m.id)?.value ?? p.home, away:document.getElementById('a_'+m.id)?.value ?? p.away}, result)}</div>` : ''}
+    </div>`;
+  });
+  document.getElementById('partidos').innerHTML = html;
+}
+
+let saveTimeout;
+async function updatePick(matchId) {
+  const picks = await getPicks(currentUser);
+  picks[matchId] = {
+    home: document.getElementById('h_'+matchId).value,
+    away: document.getElementById('a_'+matchId).value
+  };
+  await savePicks(currentUser, picks);
+  clearTimeout(saveTimeout);
+  const card = event.target.closest('.card');
+  let msg = card.querySelector('.saved');
+  if (!msg) {
+    msg = document.createElement('div');
+    msg.className = 'saved';
+    msg.textContent = '✓ Guardado';
+    card.appendChild(msg);
+  }
+  saveTimeout = setTimeout(() => msg.remove(), 1500);
+}
+
+async function renderTabla() {
+  const users = await getAllUsers();
+  const scores = [];
+  for (const u of users) {
+    const picks = await getPicks(u);
+    let total = 0;
+    let exactos = 0;
+    MATCHES.forEach(m => {
+      const result = RESULTS[m.id];
+      if (result && picks[m.id]) {
+        const pts = calcPoints(picks[m.id], result);
+        total += pts;
+        if (pts === 3) exactos++;
+      }
+    });
+    scores.push({user:u, total, exactos});
+  }
+  scores.sort((a,b) => b.total - a.total);
+  let html = `<div class="card"><table>
+    <tr><th></th><th>Jugador</th><th>Exactos</th><th class="pts">Pts</th></tr>`;
+  scores.forEach((s,i) => {
+    html += `<tr><td class="pos">${i+1}</td><td>${s.user}${s.user===currentUser?' (tú)':''}</td><td>${s.exactos}</td><td class="pts">${s.total}</td></tr>`;
+  });
+  html += '</table></div>';
+  if (scores.length === 0) html = '<div class="card">Aún no hay resultados cargados.</div>';
+  document.getElementById('tabla').innerHTML = html;
+}
+
+async function renderTodos() {
+  const users = await getAllUsers();
+  let html = '';
+  for (const m of MATCHES) {
+    html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b> — ${m.group}</div><table>`;
+    for (const u of users) {
+      const picks = await getPicks(u);
+      const p = picks[m.id];
+      const val = p && (p.home !== '' && p.home !== undefined) ? `${p.home} - ${p.away}` : '—';
+      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td></tr>`;
+    }
+    html += '</table></div>';
+  }
+  document.getElementById('todos').innerHTML = html;
+}
+
+function showTab(tab) {
+  ['partidos','tabla','todos'].forEach(t => {
+    document.getElementById(t).classList.toggle('hidden', t !== tab);
+  });
+  document.querySelectorAll('.tab').forEach((el,i) => {
+    el.classList.toggle('active', ['partidos','tabla','todos'][i] === tab);
+  });
+  if (tab === 'tabla') renderTabla();
+  if (tab === 'todos') renderTodos();
+}
+
+function waitForFirebase() {
+  return new Promise(resolve => {
+    if (window._fb) return resolve();
+    const i = setInterval(() => {
+      if (window._fb) { clearInterval(i); resolve(); }
+    }, 50);
+  });
+}
+
+async function init() {
+  await waitForFirebase();
+  if (currentUser) {
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('userLabel').textContent = currentUser;
+    await renderPartidos();
+  } else {
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
