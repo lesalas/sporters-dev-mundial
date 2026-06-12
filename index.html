@@ -212,7 +212,7 @@ function calcPoints(pick, result) {
   const ph = parseInt(pick.home), pa = parseInt(pick.away);
   const rh = result.home, ra = result.away;
   if (isNaN(ph) || isNaN(pa)) return 0;
-  if (ph === rh && pa === ra) return 3;
+  if (ph === rh && pa === ra) return 1;
   return 2;
 }
 
@@ -283,18 +283,20 @@ async function renderTabla() {
       if (result && picks[m.id]) {
         const pts = calcPoints(picks[m.id], result);
         total += pts;
-        if (pts === 3) exactos++;
+        if (pts === 1) exactos++;
         else if (pts === 2) bol++;
       }
     });
-    scores.push({user:u, total, exactos, bol});
+    scores.push({user:u, total, exactos, bol, bolPts: bol * 2});
   }
-  scores.sort((a,b) => b.total - a.total);
+  scores.sort((a,b) => b.exactos - a.exactos);
   let html = `<div class="card"><table>
-    <tr><th></th><th>Jugador</th><th>Bol.</th><th>Exactos</th><th class="pts">Pts</th></tr>`;
+    <tr><th></th><th>Jugador</th><th>Exactos</th><th class="pts">Bol.</th></tr>`;
   scores.forEach((s,i) => {
-    html += `<tr><td class="pos">${i+1}</td><td>${s.user}${s.user===currentUser?' (tú)':''}</td><td>${s.bol}</td><td>${s.exactos}</td><td class="pts">${s.total}</td></tr>`;
+    html += `<tr><td class="pos">${i+1}</td><td>${s.user}${s.user===currentUser?' (tú)':''}</td><td>${s.exactos}</td><td class="pts">${s.bolPts}</td></tr>`;
   });
+  const totalBol = scores.reduce((sum, s) => sum + s.bolPts, 0);
+  html += `<tr style="border-top:2px solid #415a77"><td></td><td style="color:#778da9">Total</td><td></td><td class="pts">${totalBol}</td></tr>`;
   html += '</table></div>';
   if (scores.length === 0) html = '<div class="card">Aún no hay resultados cargados.</div>';
   document.getElementById('tabla').innerHTML = html;
