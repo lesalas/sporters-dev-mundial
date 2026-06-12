@@ -50,6 +50,7 @@
     <div class="tab active" onclick="showTab('partidos')">Partidos</div>
     <div class="tab" onclick="showTab('tabla')">Tabla</div>
     <div class="tab" onclick="showTab('todos')">Todos los picks</div>
+    <div class="tab" onclick="showTab('mas')">MÁS</div>
     <div class="tab" onclick="showTab('admin')">⚙️</div>
   </div>
   <div class="container">
@@ -59,6 +60,7 @@
     <div id="partidos"></div>
     <div id="tabla" class="hidden"></div>
     <div id="todos" class="hidden"></div>
+    <div id="mas" class="hidden"></div>
     <div id="admin" class="hidden"></div>
   </div>
 </div>
@@ -150,6 +152,24 @@ async function getPicks(user) {
   } catch(e) { console.error(e); return {}; }
 }
 
+async function getMasState() {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const snap = await getDoc(doc(db, 'config', 'mas_state'));
+    return snap.exists() ? snap.data() : { pozoAcumulado: 0, eligibles: [] };
+  } catch(e) { console.error(e); return { pozoAcumulado: 0, eligibles: [] }; }
+}
+
+async function getMasHistory() {
+  try {
+    const { db, collection, getDocs } = window._fb;
+    const snap = await getDocs(collection(db, 'mas'));
+    const map = {};
+    snap.docs.forEach(d => { map[d.id] = d.data(); });
+    return map;
+  } catch(e) { console.error(e); return {}; }
+}
+
 async function getAllPicks(users) {
   const results = await Promise.all(users.map(u => getPicks(u)));
   const map = {};
@@ -214,6 +234,144 @@ function calcPoints(pick, result) {
   if (isNaN(ph) || isNaN(pa)) return 0;
   if (ph === rh && pa === ra) return 1;
   return 2;
+}
+
+async function settleMas(matchId) {
+  if (!adminUnlocked) return;
+  const { db, doc, getDoc, setDoc } = window._fb;
+  const existing = await getDoc(doc(db, 'mas', String(matchId)));
+  if (existing.exists()) { alert('Este partido ya fue liquidado.'); return; }
+
+  const RESULTS = await getResults();
+  const result = RESULTS[matchId];
+  if (!result) { alert('Primero carga el resultado del partido.'); return; }
+
+  const users = await getAllUsers();
+  const picksMap = await getAllPicks(users);
+
+  const participants = users.filter(u => {
+    const p = picksMap[u][matchId];
+    return p && p.home !== '' && p.home !== undefined;
+  });
+
+  const state = await getMasState();
+  const { pozoAcumulado } = state;
+  const prevEligibles = state.eligibles || [];
+
+  const eligiblesThisMatch = (pozoAcumulado === 0 || prevEligibles.length === 0)
+    ? [...participants]
+    : participants.filter(u => prevEligibles.includes(u));
+
+  const acertantes = participants.filter(u => {
+    const p = picksMap[u][matchId];
+    return parseInt(p.home) === result.home && parseInt(p.away) === result.away;
+  });
+
+  const acertantesElegibles = acertantes.filter(u => eligiblesThisMatch.includes(u));
+
+  const pozoPartido = participants.length * 2;
+  const totalPozo = pozoPartido + pozoAcumulado;
+
+  let premioElegible = 0, premioNoElegible = 0, newPozo, newEligibles;
+
+  if (acertantes.length === 0) {
+    newPozo = totalPozo;
+    newEligibles = eligiblesThisMatch;
+  } else if (acertantesElegibles.length > 0) {
+    premioElegible = totalPozo / acertantesElegibles.length;
+    newPozo = 0;
+    newEligibles = [];
+  } else {
+    premioNoElegible = pozoPartido / acertantes.length;
+    newPozo = pozoAcumulado;
+    newEligibles = eligiblesThisMatch;
+  }
+
+  await setDoc(doc(db, 'mas', String(matchId)), {
+    participants,
+    pozoPartido,
+    pozoAcumuladoAntes: pozoAcumulado,
+    eligiblesAntes: prevEligibles,
+    acertantes,
+    acertantesElegibles,
+    premioElegible,
+    premioNoElegible,
+    pozoAcumuladoDespues: newPozo,
+    eligiblesDespues: newEligibles
+  });
+
+  await setDoc(doc(db, 'config', 'mas_state'), { pozoAcumulado: newPozo, eligibles: newEligibles });
+
+  alert('✓ Partido liquidado');
+  renderAdmin();
+  renderMas();
+}
+
+async function renderMas() {
+  const matchMap = {};
+  MATCHES.forEach(m => { matchMap[m.id] = m; });
+
+  const [state, masHistory, users] = await Promise.all([getMasState(), getMasHistory(), getAllUsers()]);
+
+  // Leaderboard: sumar premios del historial
+  const balances = {};
+  users.forEach(u => { balances[u] = 0; });
+  Object.values(masHistory).forEach(s => {
+    s.acertantesElegibles.forEach(u => { if (balances[u] !== undefined) balances[u] += s.premioElegible; });
+    const noEleg = s.acertantes.filter(u => !s.acertantesElegibles.includes(u));
+    noEleg.forEach(u => { if (balances[u] !== undefined) balances[u] += s.premioNoElegible; });
+  });
+  const sorted = Object.entries(balances).sort((a,b) => b[1]-a[1]);
+
+  // Card pozo actual
+  const eligiblesLabel = state.eligibles && state.eligibles.length > 0
+    ? `Elegibles: ${state.eligibles.join(', ')}`
+    : 'Nuevo ciclo — próximos participantes serán elegibles';
+
+  let html = `<div class="card" style="text-align:center">
+    <div style="font-size:12px;color:#778da9;margin-bottom:4px">Pozo acumulado</div>
+    <div style="font-size:32px;font-weight:bold;color:#e63946">${state.pozoAcumulado} pts</div>
+    <div style="font-size:11px;color:#778da9;margin-top:4px">${eligiblesLabel}</div>
+  </div>`;
+
+  // Leaderboard
+  html += `<div class="card"><table>
+    <tr><th></th><th>Jugador</th><th class="pts">MÁS pts</th></tr>`;
+  sorted.forEach(([u,pts],i) => {
+    html += `<tr><td class="pos">${i+1}</td><td>${u}${u===currentUser?' (tú)':''}</td><td class="pts">${pts}</td></tr>`;
+  });
+  html += '</table></div>';
+
+  // Historial
+  const settled = Object.entries(masHistory).sort((a,b) => Number(b[0])-Number(a[0]));
+  if (settled.length === 0) {
+    html += '<div class="card" style="color:#778da9;text-align:center">Aún no hay partidos liquidados.</div>';
+  }
+  settled.forEach(([mid, s]) => {
+    const m = matchMap[Number(mid)];
+    const title = m ? `${m.home} vs ${m.away}` : `Partido ${mid}`;
+    let resultado;
+    if (s.acertantesElegibles.length > 0) {
+      resultado = s.acertantesElegibles.map(u => `${u} <b style="color:#52b788">+${s.premioElegible} pts</b>`).join(', ');
+    } else if (s.acertantes.length > 0) {
+      resultado = s.acertantes.map(u => `${u} <b style="color:#52b788">+${s.premioNoElegible} pts</b>`).join(', ')
+        + ` <span style="color:#778da9">(no elegibles)</span>`;
+    } else {
+      resultado = '<span style="color:#778da9">Nadie acertó — pozo acumulado</span>';
+    }
+    html += `<div class="card">
+      <div style="font-weight:bold;margin-bottom:6px">${title}</div>
+      <table>
+        <tr><td style="color:#778da9">Participantes</td><td>${s.participants.join(', ')}</td></tr>
+        <tr><td style="color:#778da9">Pozo partido</td><td>${s.pozoPartido} pts</td></tr>
+        <tr><td style="color:#778da9">Pozo acumulado anterior</td><td>${s.pozoAcumuladoAntes} pts</td></tr>
+        <tr><td style="color:#778da9">Total pozo</td><td><b>${s.pozoPartido + s.pozoAcumuladoAntes} pts</b></td></tr>
+        <tr><td style="color:#778da9">Resultado</td><td>${resultado}</td></tr>
+      </table>
+    </div>`;
+  });
+
+  document.getElementById('mas').innerHTML = html;
 }
 
 async function renderPartidos() {
@@ -356,6 +514,40 @@ async function renderAdmin() {
       </button>
     </div>`;
   });
+  // Sección MÁS
+  const [masState, masHistory, masResults] = await Promise.all([getMasState(), getMasHistory(), getResults()]);
+  html += `<div class="group-title">MÁS — Liquidar partidos</div>`;
+  html += `<div class="card" style="text-align:center">
+    Pozo acumulado: <b style="color:#e63946">${masState.pozoAcumulado} pts</b>
+    ${masState.eligibles && masState.eligibles.length > 0
+      ? `<div style="font-size:11px;color:#778da9;margin-top:4px">Elegibles: ${masState.eligibles.join(', ')}</div>`
+      : '<div style="font-size:11px;color:#778da9;margin-top:4px">Ciclo nuevo</div>'}
+  </div>`;
+  let lastGroupMas = '';
+  MATCHES.forEach(m => {
+    if (!masResults[m.id]) return;
+    if (m.group !== lastGroupMas) {
+      html += `<div class="group-title">${m.group}</div>`;
+      lastGroupMas = m.group;
+    }
+    const s = masHistory[String(m.id)];
+    if (s) {
+      const gan = s.acertantesElegibles.length > 0
+        ? s.acertantesElegibles.join(', ') + ` (+${s.premioElegible} pts)`
+        : s.acertantes.length > 0 ? s.acertantes.join(', ') + ' (no eleg.)' : 'Nadie acertó';
+      html += `<div class="card">
+        <b>${m.home} vs ${m.away}</b>
+        <div class="meta" style="color:#52b788">✓ Liquidado · Total: ${s.pozoPartido + s.pozoAcumuladoAntes} pts · ${gan}</div>
+      </div>`;
+    } else {
+      html += `<div class="card">
+        <b>${m.home} vs ${m.away}</b>
+        <div class="meta">Resultado: ${masResults[m.id].home}-${masResults[m.id].away} · Pendiente</div>
+        <button onclick="settleMas(${m.id})">💰 Liquidar MÁS</button>
+      </div>`;
+    }
+  });
+
   document.getElementById('admin').innerHTML = html;
 }
 
@@ -384,14 +576,15 @@ async function saveResult(matchId) {
 
 
 function showTab(tab) {
-  ['partidos','tabla','todos','admin'].forEach(t => {
+  ['partidos','tabla','todos','mas','admin'].forEach(t => {
     document.getElementById(t).classList.toggle('hidden', t !== tab);
   });
   document.querySelectorAll('.tab').forEach((el,i) => {
-    el.classList.toggle('active', ['partidos','tabla','todos','admin'][i] === tab);
+    el.classList.toggle('active', ['partidos','tabla','todos','mas','admin'][i] === tab);
   });
   if (tab === 'tabla') renderTabla();
   if (tab === 'todos') renderTodos();
+  if (tab === 'mas') renderMas();
   if (tab === 'admin') renderAdmin();
 }
 
