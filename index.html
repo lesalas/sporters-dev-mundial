@@ -67,7 +67,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBfOfmikjIGX2xdN8jfsqA-DwbqtbnltY0",
@@ -82,7 +82,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // Exponer para el script principal (no-module)
-window._fb = { db, collection, doc, getDoc, getDocs, setDoc };
+window._fb = { db, collection, doc, getDoc, getDocs, setDoc, deleteDoc };
 </script>
 <script>
 // ---- Datos de partidos (fase de grupos Mundial 2026) ----
@@ -384,6 +384,23 @@ async function settleMas(matchId) {
   renderMas();
 }
 
+async function resetMas(matchId) {
+  if (!adminUnlocked) return;
+  if (!confirm('¿Revertir esta liquidación? El pozo acumulado volverá al estado anterior a este partido.')) return;
+  const { db, doc, getDoc, setDoc, deleteDoc } = window._fb;
+  const snap = await getDoc(doc(db, 'mas', String(matchId)));
+  if (!snap.exists()) { alert('No hay liquidación para revertir.'); return; }
+  const s = snap.data();
+  await setDoc(doc(db, 'config', 'mas_state'), {
+    pozoAcumulado: s.pozoAcumuladoAntes,
+    eligibles: s.eligiblesAntes
+  });
+  await deleteDoc(doc(db, 'mas', String(matchId)));
+  alert('✓ Liquidación revertida. Ya puedes volver a liquidar.');
+  renderAdmin();
+  renderMas();
+}
+
 async function renderMas() {
   const matchMap = {};
   MATCHES.forEach(m => { matchMap[m.id] = m; });
@@ -615,6 +632,7 @@ async function renderAdmin() {
       html += `<div class="card">
         <b>${m.home} vs ${m.away}</b>
         <div class="meta" style="color:#52b788">✓ Liquidado · Total: ${s.pozoPartido + s.pozoAcumuladoAntes} pts · ${gan}</div>
+        <button style="background:#415a77;margin-top:6px" onclick="resetMas(${m.id})">🔄 Reliquidar</button>
       </div>`;
     } else {
       html += `<div class="card">
