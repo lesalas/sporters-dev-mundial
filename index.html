@@ -572,9 +572,7 @@ async function renderTodos() {
     for (const u of users) {
       const p = picksMap[u][m.id];
       const val = p && (p.home !== '' && p.home !== undefined) ? `${p.home} - ${p.away}` : '—';
-      const pts = result && p && p.home !== '' && p.home !== undefined ? calcPoints(p, result) : null;
-      const ptsStr = pts !== null ? `<td style="text-align:right;color:#e63946;padding-left:8px">${pts}pt</td>` : '<td></td>';
-      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td>${ptsStr}</tr>`;
+      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td></tr>`;
     }
     html += '</table></div>';
   }
