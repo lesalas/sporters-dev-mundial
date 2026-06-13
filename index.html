@@ -563,13 +563,18 @@ async function renderTabla() {
 async function renderTodos() {
   const users = await getAllUsers();
   const picksMap = await getAllPicks(users);
+  const RESULTS = await getResults();
   let html = '';
   for (const m of [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey))) {
-    html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b> — ${m.group} · ${m.date}</div><table>`;
+    const result = RESULTS[m.id];
+    const resultStr = result ? ` · <b style="color:#e63946">${result.home}-${result.away}</b>` : '';
+    html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b>${resultStr} — ${m.group} · ${m.date}</div><table>`;
     for (const u of users) {
       const p = picksMap[u][m.id];
       const val = p && (p.home !== '' && p.home !== undefined) ? `${p.home} - ${p.away}` : '—';
-      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td></tr>`;
+      const pts = result && p && p.home !== '' && p.home !== undefined ? calcPoints(p, result) : null;
+      const ptsStr = pts !== null ? `<td style="text-align:right;color:#e63946;padding-left:8px">${pts}pt</td>` : '<td></td>';
+      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td>${ptsStr}</tr>`;
     }
     html += '</table></div>';
   }
