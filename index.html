@@ -637,20 +637,44 @@ async function renderAdmin() {
       </div>`;
     return;
   }
-  const locks = await getLocks();
-  const RESULTS = await getResults();
+  const [locks, RESULTS, allUsers, pagos] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos()]);
+  const picksMap = await getAllPicks(allUsers);
   let html = '';
-  let lastGroup = '';
-  MATCHES.forEach(m => {
-    if (m.group !== lastGroup) {
-      html += `<div class="group-title">${m.group}</div>`;
-      lastGroup = m.group;
+  let lastDate = '';
+  const sortedMatches = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  sortedMatches.forEach(m => {
+    const dateLabel = m.date.includes('·') ? m.date.split(' · ')[0] : m.date;
+    if (dateLabel !== lastDate) {
+      html += `<div class="group-title">${dateLabel}</div>`;
+      lastDate = dateLabel;
     }
     const locked = !!locks[m.id];
     const r = RESULTS[m.id] || {home:'', away:''};
+    const usersWithPick = allUsers.filter(u => {
+      const p = picksMap[u][m.id];
+      return p && p.home !== '' && p.home !== undefined;
+    });
+    let pagosBlock = '';
+    if (usersWithPick.length > 0) {
+      pagosBlock = `<div style="margin-top:8px;border-top:1px solid #415a77;padding-top:8px">
+        <div style="font-size:11px;color:#778da9;margin-bottom:4px">Pagos</div>
+        <table>`;
+      usersWithPick.forEach(u => {
+        const paid = !!pagos[`${m.id}_${u}`];
+        pagosBlock += `<tr>
+          <td>${u}</td>
+          <td style="text-align:right">
+            <button style="width:auto;margin:0;padding:4px 10px;font-size:12px;background:${paid?'#52b788':'#e63946'}" onclick="togglePago(${m.id}, '${u}', ${!paid})">
+              ${paid ? '✓ Pagó' : '✗ No pagó'}
+            </button>
+          </td>
+        </tr>`;
+      });
+      pagosBlock += `</table></div>`;
+    }
     html += `
     <div class="card">
-      <div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b></div>
+      <div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b> — ${m.group}</div>
       <div class="match">
         <input type="number" min="0" id="rh_${m.id}" value="${r.home}" style="width:50px">
         <span class="vs">-</span>
@@ -660,6 +684,7 @@ async function renderAdmin() {
       <button style="background:${locked?'#52b788':'#e63946'}" onclick="toggleLock(${m.id}, ${!locked})">
         ${locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
       </button>
+      ${pagosBlock}
     </div>`;
   });
   // Sección MÁS
@@ -707,38 +732,6 @@ async function renderAdmin() {
       </div>`;
     }
   });
-
-  // Sección Pagos
-  const [allUsersForPagos, pagos] = await Promise.all([getAllUsers(), getPagos()]);
-  const pagosPicksMap = await getAllPicks(allUsersForPagos);
-  html += `<div class="group-title">Pagos</div>`;
-  let anyMatchWithPicks = false;
-  for (const m of [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey))) {
-    const usersWithPick = allUsersForPagos.filter(u => {
-      const p = pagosPicksMap[u][m.id];
-      return p && p.home !== '' && p.home !== undefined;
-    });
-    if (usersWithPick.length === 0) continue;
-    anyMatchWithPicks = true;
-    html += `<div class="card">
-      <div class="meta" style="text-align:left;margin-bottom:6px"><b>${m.home} vs ${m.away}</b> — ${m.group}</div>
-      <table>`;
-    usersWithPick.forEach(u => {
-      const paid = !!pagos[`${m.id}_${u}`];
-      html += `<tr>
-        <td>${u}</td>
-        <td style="text-align:right">
-          <button style="width:auto;margin:0;padding:6px 12px;background:${paid?'#52b788':'#e63946'}" onclick="togglePago(${m.id}, '${u}', ${!paid})">
-            ${paid ? '✓ Pagó' : '✗ No pagó'}
-          </button>
-        </td>
-      </tr>`;
-    });
-    html += `</table></div>`;
-  }
-  if (!anyMatchWithPicks) {
-    html += `<div class="card" style="text-align:center;color:#778da9">Sin pronósticos registrados</div>`;
-  }
 
   document.getElementById('admin').innerHTML = html;
 }
