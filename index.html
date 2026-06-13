@@ -307,6 +307,15 @@ async function setResult(matchId, home, away) {
   } catch(e) { console.error(e); }
 }
 
+function isMatchPlaying(sortKey) {
+  if (!sortKey || sortKey === '99-99T99:99') return false;
+  const [monthDay, time] = sortKey.split('T');
+  const [month, day] = monthDay.split('-');
+  const start = new Date(`2026-${month}-${day}T${time}`);
+  const now = new Date();
+  return now >= start && now < new Date(start.getTime() + 90 * 60 * 1000);
+}
+
 function calcPoints(pick, result) {
   if (!result || pick.home === '' || pick.away === '' || pick.home === undefined || pick.away === undefined) return 0;
   const ph = parseInt(pick.home), pa = parseInt(pick.away);
@@ -487,6 +496,7 @@ async function renderPartidos() {
     const p = picks[m.id] || {home:'', away:''};
     const result = RESULTS[m.id];
     const locked = !!locks[m.id];
+    const playing = !result && isMatchPlaying(m.sortKey);
     const metaDetail = m.date.includes('·') ? m.date.split(' · ').slice(1).join(' · ') : '';
     html += `
     <div class="card">
@@ -497,7 +507,7 @@ async function renderPartidos() {
         <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${locked ? 'disabled' : ''}>
         <div class="team">${m.away}</div>
       </div>
-      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${locked ? ' · 🔒 Cerrado' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
+      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span style="color:#4caf50">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
       ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:p.home, away:p.away}, result)}</div>` : ''}
     </div>`;
   });
