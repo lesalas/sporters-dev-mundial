@@ -313,7 +313,7 @@ function isMatchPlaying(sortKey) {
   const [month, day] = monthDay.split('-');
   const start = new Date(`2026-${month}-${day}T${time}`);
   const now = new Date();
-  return now >= start && now < new Date(start.getTime() + 90 * 60 * 1000);
+  return now >= start && now < new Date(start.getTime() + 105 * 60 * 1000);
 }
 
 function calcPoints(pick, result) {
