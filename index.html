@@ -309,6 +309,25 @@ async function setResult(matchId, home, away) {
   } catch(e) { console.error(e); }
 }
 
+async function getPagos() {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const snap = await getDoc(doc(db, "config", "pagos"));
+    return snap.exists() ? snap.data() : {};
+  } catch(e) { console.error(e); return {}; }
+}
+
+async function setPago(matchId, userName, paid) {
+  try {
+    const { db, doc, setDoc, getDoc } = window._fb;
+    const ref = doc(db, "config", "pagos");
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? snap.data() : {};
+    data[`${matchId}_${userName}`] = paid;
+    await setDoc(ref, data);
+  } catch(e) { console.error(e); }
+}
+
 function isMatchPlaying(sortKey) {
   if (!sortKey || sortKey === '99-99T99:99') return false;
   const [monthDay, time] = sortKey.split('T');
@@ -583,8 +602,7 @@ async function renderTabla() {
 
 async function renderTodos() {
   const users = await getAllUsers();
-  const picksMap = await getAllPicks(users);
-  const RESULTS = await getResults();
+  const [picksMap, RESULTS, pagos] = await Promise.all([getAllPicks(users), getResults(), getPagos()]);
   let html = '';
   for (const m of [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey))) {
     const result = RESULTS[m.id];
@@ -592,8 +610,14 @@ async function renderTodos() {
     html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b>${resultStr} — ${m.group} · ${m.date}</div><table>`;
     for (const u of users) {
       const p = picksMap[u][m.id];
-      const val = p && (p.home !== '' && p.home !== undefined) ? `${p.home} - ${p.away}` : '—';
-      html += `<tr><td>${u}${u===currentUser?' (tú)':''}</td><td style="text-align:right">${val}</td></tr>`;
+      const hasPick = p && p.home !== '' && p.home !== undefined;
+      const val = hasPick ? `${p.home} - ${p.away}` : '—';
+      const pagoIndicator = hasPick
+        ? (!!pagos[`${m.id}_${u}`]
+          ? '<span style="color:#52b788;font-size:10px;margin-left:4px">● Pagó</span>'
+          : '<span style="color:#e63946;font-size:10px;margin-left:4px">● No pagó</span>')
+        : '';
+      html += `<tr><td>${u}${u===currentUser?' (tú)':''}${pagoIndicator}</td><td style="text-align:right">${val}</td></tr>`;
     }
     html += '</table></div>';
   }
@@ -684,6 +708,38 @@ async function renderAdmin() {
     }
   });
 
+  // Sección Pagos
+  const [allUsersForPagos, pagos] = await Promise.all([getAllUsers(), getPagos()]);
+  const pagosPicksMap = await getAllPicks(allUsersForPagos);
+  html += `<div class="group-title">Pagos</div>`;
+  let anyMatchWithPicks = false;
+  for (const m of [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey))) {
+    const usersWithPick = allUsersForPagos.filter(u => {
+      const p = pagosPicksMap[u][m.id];
+      return p && p.home !== '' && p.home !== undefined;
+    });
+    if (usersWithPick.length === 0) continue;
+    anyMatchWithPicks = true;
+    html += `<div class="card">
+      <div class="meta" style="text-align:left;margin-bottom:6px"><b>${m.home} vs ${m.away}</b> — ${m.group}</div>
+      <table>`;
+    usersWithPick.forEach(u => {
+      const paid = !!pagos[`${m.id}_${u}`];
+      html += `<tr>
+        <td>${u}</td>
+        <td style="text-align:right">
+          <button style="width:auto;margin:0;padding:6px 12px;background:${paid?'#52b788':'#e63946'}" onclick="togglePago(${m.id}, '${u}', ${!paid})">
+            ${paid ? '✓ Pagó' : '✗ No pagó'}
+          </button>
+        </td>
+      </tr>`;
+    });
+    html += `</table></div>`;
+  }
+  if (!anyMatchWithPicks) {
+    html += `<div class="card" style="text-align:center;color:#778da9">Sin pronósticos registrados</div>`;
+  }
+
   document.getElementById('admin').innerHTML = html;
 }
 
@@ -700,6 +756,11 @@ function checkAdmin() {
 
 async function toggleLock(matchId, newState) {
   await setLock(matchId, newState);
+  renderAdmin();
+}
+
+async function togglePago(matchId, userName, paid) {
+  await setPago(matchId, userName, paid);
   renderAdmin();
 }
 
