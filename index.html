@@ -337,6 +337,30 @@ function isMatchPlaying(sortKey) {
   return now >= start && now < new Date(start.getTime() + 105 * 60 * 1000);
 }
 
+function hasMatchStarted(sortKey) {
+  if (!sortKey || sortKey === '99-99T99:99') return false;
+  const [monthDay, time] = sortKey.split('T');
+  const [month, day] = monthDay.split('-');
+  return new Date() >= new Date(`2026-${month}-${day}T${time}`);
+}
+
+async function autoLockMatches() {
+  try {
+    const { db, doc, setDoc, getDoc } = window._fb;
+    const ref = doc(db, "config", "locks");
+    const snap = await getDoc(ref);
+    const locks = snap.exists() ? snap.data() : {};
+    let changed = false;
+    for (const m of MATCHES) {
+      if (!locks[m.id] && hasMatchStarted(m.sortKey)) {
+        locks[m.id] = true;
+        changed = true;
+      }
+    }
+    if (changed) await setDoc(ref, locks);
+  } catch(e) { console.error(e); }
+}
+
 function calcPoints(pick, result) {
   if (!result || pick.home === '' || pick.away === '' || pick.home === undefined || pick.away === undefined) return 0;
   const ph = parseInt(pick.home), pa = parseInt(pick.away);
@@ -787,8 +811,14 @@ function waitForFirebase() {
   });
 }
 
+let _autoLockInterval = null;
+
 async function init() {
   await waitForFirebase();
+  if (!_autoLockInterval) {
+    autoLockMatches();
+    _autoLockInterval = setInterval(autoLockMatches, 60000);
+  }
   if (currentUser) {
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
