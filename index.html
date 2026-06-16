@@ -534,14 +534,48 @@ async function renderMas() {
   document.getElementById('mas').innerHTML = html;
 }
 
+let partidosFilter = 'hoy';
+let todosFilter    = 'hoy';
+let adminFilter    = 'hoy';
+
+function getTodayPrefix() {
+  const now = new Date();
+  return String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+}
+
+function applyDateFilter(matches, filter) {
+  if (filter === 'hoy') return matches.filter(m => m.sortKey.startsWith(getTodayPrefix()));
+  return matches;
+}
+
+function filterBarHTML(active, setFn) {
+  return ['hoy','todos'].map(f =>
+    `<button onclick="${setFn}('${f}')" style="flex:1;padding:8px 0;border:none;cursor:pointer;border-radius:8px;font-size:13px;` +
+    `font-weight:${active===f?'bold':'normal'};` +
+    `background:${active===f?'#415a77':'transparent'};` +
+    `color:${active===f?'#fff':'#778da9'}">` +
+    `${f === 'hoy' ? 'Hoy' : 'Todos'}</button>`
+  ).join('');
+}
+
+function setPartidosFilter(f) { partidosFilter = f; renderPartidos(); }
+function setTodosFilter(f)    { todosFilter    = f; renderTodos();    }
+function setAdminFilter(f)    { adminFilter    = f; renderAdmin();    }
+
 async function renderPartidos() {
   const picks = await getPicks(currentUser);
   const locks = await getLocks();
   const RESULTS = await getResults();
-  let html = '';
-  let lastDate = '';
   const sorted = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
-  sorted.forEach(m => {
+  const filteredSorted = applyDateFilter(sorted, partidosFilter);
+  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(partidosFilter,'setPartidosFilter')}</div>`;
+  if (filteredSorted.length === 0) {
+    html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
+    document.getElementById('partidos').innerHTML = html;
+    return;
+  }
+  let lastDate = '';
+  filteredSorted.forEach(m => {
     const dateLabel = m.date.includes('·') ? m.date.split(' · ')[0] : m.date;
     if (dateLabel !== lastDate) {
       html += `<div class="group-title">${dateLabel}</div>`;
@@ -627,8 +661,15 @@ async function renderTabla() {
 async function renderTodos() {
   const users = await getAllUsers();
   const [picksMap, RESULTS, pagos] = await Promise.all([getAllPicks(users), getResults(), getPagos()]);
-  let html = '';
-  for (const m of [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey))) {
+  const sorted = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
+  const filteredSorted = applyDateFilter(sorted, todosFilter);
+  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(todosFilter,'setTodosFilter')}</div>`;
+  if (filteredSorted.length === 0) {
+    html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
+    document.getElementById('todos').innerHTML = html;
+    return;
+  }
+  for (const m of filteredSorted) {
     const result = RESULTS[m.id];
     const resultStr = result ? ` · <b style="color:#e63946">${result.home}-${result.away}</b>` : '';
     html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b>${resultStr} — ${m.group} · ${m.date}</div><table>`;
@@ -663,10 +704,14 @@ async function renderAdmin() {
   }
   const [locks, RESULTS, allUsers, pagos] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos()]);
   const picksMap = await getAllPicks(allUsers);
-  let html = '';
-  let lastDate = '';
   const sortedMatches = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
-  sortedMatches.forEach(m => {
+  const filteredAdmin = applyDateFilter(sortedMatches, adminFilter);
+  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(adminFilter,'setAdminFilter')}</div>`;
+  let lastDate = '';
+  if (filteredAdmin.length === 0) {
+    html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
+  }
+  filteredAdmin.forEach(m => {
     const dateLabel = m.date.includes('·') ? m.date.split(' · ')[0] : m.date;
     if (dateLabel !== lastDate) {
       html += `<div class="group-title">${dateLabel}</div>`;
