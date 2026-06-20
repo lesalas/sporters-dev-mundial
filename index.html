@@ -557,8 +557,18 @@ function getTodayPrefix() {
   return String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
 }
 
+function getTomorrowPrefix() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return String(tomorrow.getMonth()+1).padStart(2,'0') + '-' + String(tomorrow.getDate()).padStart(2,'0');
+}
+
 function applyDateFilter(matches, filter) {
-  if (filter === 'hoy') return matches.filter(m => m.sortKey.startsWith(getTodayPrefix()));
+  if (filter === 'hoy') {
+    const todayPfx = getTodayPrefix();
+    const tomorrowMidnight = getTomorrowPrefix() + 'T00:00';
+    return matches.filter(m => m.sortKey.startsWith(todayPfx) || m.sortKey === tomorrowMidnight);
+  }
   return matches;
 }
 
