@@ -464,7 +464,7 @@ async function renderMas() {
   const matchMap = {};
   MATCHES.forEach(m => { matchMap[m.id] = m; });
 
-  const [state, masHistory, users] = await Promise.all([getMasState(), getMasHistory(), getAllUsers()]);
+  const [state, masHistory, users, RESULTS] = await Promise.all([getMasState(), getMasHistory(), getAllUsers(), getResults()]);
 
   // Leaderboard: sumar premios del historial
   const balances = {};
@@ -509,13 +509,29 @@ async function renderMas() {
   html += '</table></div>';
 
   // Historial
-  const settled = Object.entries(masHistory).sort((a,b) => Number(b[0])-Number(a[0]));
-  if (settled.length === 0) {
-    html += '<div class="card" style="color:#778da9;text-align:center">Aún no hay partidos liquidados.</div>';
+  html += `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(masFilter,'setMasFilter')}</div>`;
+  const settled = Object.entries(masHistory).sort((a, b) => {
+    const skA = (matchMap[Number(a[0])] || {}).sortKey || '99-99T99:99';
+    const skB = (matchMap[Number(b[0])] || {}).sortKey || '99-99T99:99';
+    return skA.localeCompare(skB);
+  });
+  const _todayPfx = getTodayPrefix();
+  const _tomorrowMidnight = getTomorrowPrefix() + 'T00:00';
+  const filteredSettled = masFilter === 'hoy'
+    ? settled.filter(([mid]) => {
+        const m = matchMap[Number(mid)];
+        return m && (m.sortKey.startsWith(_todayPfx) || m.sortKey === _tomorrowMidnight);
+      })
+    : settled;
+  if (filteredSettled.length === 0) {
+    html += `<div class="card" style="color:#778da9;text-align:center">${masFilter === 'hoy' ? 'No hay partidos liquidados hoy.' : 'Aún no hay partidos liquidados.'}</div>`;
   }
-  settled.forEach(([mid, s]) => {
+  filteredSettled.forEach(([mid, s]) => {
     const m = matchMap[Number(mid)];
     const title = m ? `${m.home} vs ${m.away}` : `Partido ${mid}`;
+    const matchResult = RESULTS[Number(mid)];
+    const resultScore = matchResult ? ` <b style="color:#e63946">${matchResult.home}-${matchResult.away}</b>` : '';
+    const dateLabel = m ? `<span style="font-size:11px;color:#778da9;margin-left:6px">${m.date.split(' · ')[0]}</span>` : '';
     let resultado;
     if (s.pagos) {
       const ganadores = Object.entries(s.pagos).filter(([,pts]) => pts > 0);
@@ -536,7 +552,7 @@ async function renderMas() {
       ? `Nuevo pozo: ${s.newPool.puntos} pts · Pozos liquidados: ${(s.pozosLiquidados||[]).length}`
       : `Pozo partido: ${s.pozoPartido} pts · Acumulado previo: ${s.pozoAcumuladoAntes} pts`;
     html += `<div class="card">
-      <div style="font-weight:bold;margin-bottom:6px">${title}</div>
+      <div style="font-weight:bold;margin-bottom:6px">${title}${resultScore}${dateLabel}</div>
       <table>
         <tr><td style="color:#778da9">Participantes</td><td>${s.participants.join(', ')}</td></tr>
         <tr><td style="color:#778da9">Pozos</td><td>${pozoInfo}</td></tr>
@@ -551,10 +567,21 @@ async function renderMas() {
 let partidosFilter = 'hoy';
 let todosFilter    = 'hoy';
 let adminFilter    = 'hoy';
+let masFilter      = 'hoy';
 
 function getTodayPrefix() {
   const now = new Date();
   return String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+}
+
+function formatPickTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'})
+    : d.toLocaleDateString('es', {day:'2-digit', month:'2-digit'}) + ' ' + d.toLocaleTimeString('es', {hour:'2-digit', minute:'2-digit'});
 }
 
 function getTomorrowPrefix() {
@@ -585,6 +612,7 @@ function filterBarHTML(active, setFn) {
 function setPartidosFilter(f) { partidosFilter = f; renderPartidos(); }
 function setTodosFilter(f)    { todosFilter    = f; renderTodos();    }
 function setAdminFilter(f)    { adminFilter    = f; renderAdmin();    }
+function setMasFilter(f)      { masFilter      = f; renderMas();      }
 
 async function renderPartidos() {
   const picks = await getPicks(currentUser);
@@ -610,6 +638,7 @@ async function renderPartidos() {
     const locked = !!locks[m.id];
     const playing = !result && isMatchPlaying(m.sortKey);
     const metaDetail = m.date.includes('·') ? m.date.split(' · ').slice(1).join(' · ') : '';
+    const savedAtLabel = p.savedAt ? ` · Guardado ${formatPickTime(p.savedAt)}` : '';
     html += `
     <div class="card">
       <div class="match">
@@ -619,7 +648,7 @@ async function renderPartidos() {
         <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${locked ? 'disabled' : ''}>
         <div class="team">${m.away}</div>
       </div>
-      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span style="color:#4caf50">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
+      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${savedAtLabel}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span style="color:#4caf50">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
       ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:p.home, away:p.away}, result)}</div>` : ''}
     </div>`;
   });
@@ -633,7 +662,8 @@ async function updatePick(matchId) {
   const picks = await getPicks(currentUser);
   picks[matchId] = {
     home: document.getElementById('h_'+matchId).value,
-    away: document.getElementById('a_'+matchId).value
+    away: document.getElementById('a_'+matchId).value,
+    savedAt: new Date().toISOString()
   };
   await savePicks(currentUser, picks);
   clearTimeout(saveTimeout);
@@ -700,7 +730,8 @@ async function renderTodos() {
     for (const u of users) {
       const p = picksMap[u][m.id];
       const hasPick = p && p.home !== '' && p.home !== undefined;
-      const val = hasPick ? `${p.home} - ${p.away}` : '—';
+      const timeLabel = hasPick && p.savedAt ? `<span style="color:#778da9;font-size:10px;margin-left:4px">${formatPickTime(p.savedAt)}</span>` : '';
+      const val = hasPick ? `${p.home} - ${p.away}${timeLabel}` : '—';
       const pagoIndicator = hasPick
         ? (!!pagos[`${m.id}_${u}`]
           ? '<span style="color:#52b788;font-size:10px;margin-left:4px">● Pagó</span>'
