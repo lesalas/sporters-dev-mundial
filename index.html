@@ -55,7 +55,7 @@
   </div>
   <div class="container">
     <div style="text-align:right; font-size:12px; color:#778da9; margin-bottom:8px;">
-      Jugando como: <b id="userLabel"></b> | <a href="#" onclick="logout()" style="color:#e63946;">cambiar</a>
+      Jugando como: <b id="userLabel"></b> | <span id="balanceLabel" style="font-weight:bold"></span> | <a href="#" onclick="logout()" style="color:#e63946;">cambiar</a>
     </div>
     <div id="partidos"></div>
     <div id="tabla" class="hidden"></div>
@@ -67,7 +67,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBfOfmikjIGX2xdN8jfsqA-DwbqtbnltY0",
@@ -82,7 +82,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // Exponer para el script principal (no-module)
-window._fb = { db, collection, doc, getDoc, getDocs, setDoc, deleteDoc };
+window._fb = { db, collection, doc, getDoc, getDocs, setDoc, deleteDoc, runTransaction, serverTimestamp };
 </script>
 <script>
 // ---- Datos de partidos (fase de grupos Mundial 2026) ----
@@ -214,6 +214,9 @@ MATCHES.push(
 // Resultados y bloqueos ahora se manejan en Firestore (colección "config")
 
 let currentUser = localStorage.getItem('quiniela_user') || null;
+let currentBalance = 0;
+let adminSaldoFormUser = null;
+let adminMovimientosUser = null;
 
 function login() {
   const name = document.getElementById('nameInput').value.trim();
@@ -340,6 +343,114 @@ async function setPago(matchId, userName, paid) {
     data[`${matchId}_${userName}`] = paid;
     await setDoc(ref, data);
   } catch(e) { console.error(e); }
+}
+
+async function getUserBalance(username) {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const snap = await getDoc(doc(db, 'users', username));
+    return snap.exists() ? (snap.data().saldoActual || 0) : 0;
+  } catch(e) { console.error(e); return 0; }
+}
+
+async function getAllUsersData() {
+  try {
+    const { db, collection, getDocs } = window._fb;
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map(d => ({ id: d.id, ...d.data(), saldoActual: d.data().saldoActual || 0 }));
+  } catch(e) { console.error(e); return []; }
+}
+
+async function getMovimientos(username) {
+  try {
+    const { db, collection, getDocs } = window._fb;
+    const snap = await getDocs(collection(db, 'movimientosSaldo'));
+    return snap.docs
+      .map(d => d.data())
+      .filter(d => d.usuarioId === username)
+      .sort((a, b) => {
+        const ta = a.fecha?.toMillis ? a.fecha.toMillis() : 0;
+        const tb = b.fecha?.toMillis ? b.fecha.toMillis() : 0;
+        return tb - ta;
+      });
+  } catch(e) { console.error(e); return []; }
+}
+
+async function acreditarSaldo(username, monto, nota) {
+  const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
+  const userRef = doc(db, 'users', username);
+  const movRef = doc(collection(db, 'movimientosSaldo'));
+  await runTransaction(db, async (t) => {
+    const userSnap = await t.get(userRef);
+    const saldoActual = userSnap.exists() ? (userSnap.data().saldoActual || 0) : 0;
+    t.set(userRef, { name: username, saldoActual: saldoActual + monto }, { merge: true });
+    t.set(movRef, { usuarioId: username, tipo: 'recarga', monto, fecha: serverTimestamp(), nota: nota || 'Recarga manual', partidoId: null });
+  });
+}
+
+async function descontarYGuardarPick(username, matchId, home, away) {
+  const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
+  const userRef = doc(db, 'users', username);
+  const picksRef = doc(db, 'picks', username);
+  const movRef = doc(collection(db, 'movimientosSaldo'));
+  return await runTransaction(db, async (t) => {
+    const [userSnap, picksSnap] = await Promise.all([t.get(userRef), t.get(picksRef)]);
+    const saldoActual = userSnap.exists() ? (userSnap.data().saldoActual || 0) : 0;
+    const picks = picksSnap.exists() ? picksSnap.data() : {};
+    const isNewPick = !picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined;
+    if (isNewPick && saldoActual < 2) throw new Error('Saldo insuficiente');
+    picks[matchId] = { home, away, savedAt: new Date().toISOString() };
+    t.set(picksRef, picks);
+    if (isNewPick) {
+      const newSaldo = saldoActual - 2;
+      t.set(userRef, { name: username, saldoActual: newSaldo }, { merge: true });
+      const match = MATCHES.find(m => m.id === matchId);
+      const nota = match ? `Pronóstico: ${match.home} vs ${match.away}` : `Pronóstico partido ${matchId}`;
+      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: 2, fecha: serverTimestamp(), nota, partidoId: matchId });
+      return newSaldo;
+    }
+    return saldoActual;
+  });
+}
+
+async function registerUser(username) {
+  const { db, doc, getDoc, setDoc } = window._fb;
+  const ref = doc(db, 'users', username);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) await setDoc(ref, { name: username, saldoActual: 0 });
+}
+
+function updateBalanceDisplay(bal) {
+  const el = document.getElementById('balanceLabel');
+  if (!el) return;
+  el.textContent = `Bs ${Number(bal).toFixed(2)}`;
+  el.style.color = bal < 2 ? '#e63946' : '#52b788';
+}
+
+function toggleAdminForm(username) {
+  adminSaldoFormUser = adminSaldoFormUser === username ? null : username;
+  adminMovimientosUser = null;
+  renderAdmin();
+}
+
+function toggleAdminMovimientos(username) {
+  adminMovimientosUser = adminMovimientosUser === username ? null : username;
+  adminSaldoFormUser = null;
+  renderAdmin();
+}
+
+async function confirmarAcreditar(username) {
+  const monto = parseFloat(document.getElementById('acreditarMonto').value);
+  const nota = document.getElementById('acreditarNota').value.trim() || 'Recarga manual';
+  if (isNaN(monto) || monto <= 0) { alert('Ingresa un monto válido'); return; }
+  await acreditarSaldo(username, monto, nota);
+  if (username === currentUser) {
+    currentBalance = await getUserBalance(currentUser);
+    updateBalanceDisplay(currentBalance);
+  }
+  adminSaldoFormUser = null;
+  alert(`✓ Bs ${monto} acreditados a ${username}`);
+  renderAdmin();
 }
 
 function isMatchPlaying(sortKey) {
@@ -636,19 +747,23 @@ async function renderPartidos() {
     const p = picks[m.id] || {home:'', away:''};
     const result = RESULTS[m.id];
     const locked = !!locks[m.id];
+    const hasPick = p.home !== '' && p.home !== undefined;
+    const saldoBloqueado = !locked && !hasPick && currentBalance < 2;
     const playing = !result && isMatchPlaying(m.sortKey);
     const metaDetail = m.date.includes('·') ? m.date.split(' · ').slice(1).join(' · ') : '';
     const savedAtLabel = p.savedAt ? ` · Guardado ${formatPickTime(p.savedAt)}` : '';
+    const inputDisabled = locked || saldoBloqueado ? 'disabled' : '';
     html += `
     <div class="card">
       <div class="match">
         <div class="team">${m.home}</div>
-        <input type="number" min="0" id="h_${m.id}" value="${p.home}" onchange="updatePick(${m.id})" ${locked ? 'disabled' : ''}>
+        <input type="number" min="0" id="h_${m.id}" value="${p.home}" onchange="updatePick(${m.id})" ${inputDisabled}>
         <span class="vs">-</span>
-        <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${locked ? 'disabled' : ''}>
+        <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${inputDisabled}>
         <div class="team">${m.away}</div>
       </div>
       <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${savedAtLabel}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span style="color:#4caf50">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
+      ${saldoBloqueado ? '<div style="color:#e63946;font-size:12px;text-align:center;margin-top:4px">Saldo insuficiente. Recarga enviando tu comprobante.</div>' : ''}
       ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:p.home, away:p.away}, result)}</div>` : ''}
     </div>`;
   });
@@ -659,13 +774,22 @@ let saveTimeout;
 async function updatePick(matchId) {
   const locks = await getLocks();
   if (locks[matchId]) { alert('Este partido ya está cerrado.'); init(); return; }
-  const picks = await getPicks(currentUser);
-  picks[matchId] = {
-    home: document.getElementById('h_'+matchId).value,
-    away: document.getElementById('a_'+matchId).value,
-    savedAt: new Date().toISOString()
-  };
-  await savePicks(currentUser, picks);
+  const home = document.getElementById('h_'+matchId).value;
+  const away = document.getElementById('a_'+matchId).value;
+  let newBalance;
+  try {
+    newBalance = await descontarYGuardarPick(currentUser, matchId, home, away);
+  } catch(e) {
+    if (e.message === 'Saldo insuficiente') {
+      alert('Saldo insuficiente. Recarga tu saldo enviando tu comprobante.');
+    } else {
+      console.error(e);
+      alert('Error al guardar el pronóstico.');
+    }
+    return;
+  }
+  currentBalance = newBalance;
+  updateBalanceDisplay(newBalance);
   clearTimeout(saveTimeout);
   const card = event.target.closest('.card');
   let msg = card.querySelector('.saved');
@@ -757,11 +881,57 @@ async function renderAdmin() {
       </div>`;
     return;
   }
-  const [locks, RESULTS, allUsers, pagos] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos()]);
+  const [locks, RESULTS, allUsers, pagos, allUsersData] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos(), getAllUsersData()]);
   const picksMap = await getAllPicks(allUsers);
+
+  // — Sección saldos —
+  let html = `<div class="group-title">Saldos de jugadores</div><div class="card"><table>
+    <tr><th>Jugador</th><th style="text-align:right">Saldo</th><th></th></tr>`;
+  allUsersData.sort((a,b) => a.id.localeCompare(b.id)).forEach(u => {
+    const sc = u.saldoActual < 2 ? '#e63946' : '#52b788';
+    html += `<tr>
+      <td>${u.id}</td>
+      <td style="text-align:right;color:${sc};font-weight:bold">Bs ${u.saldoActual.toFixed(2)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button style="width:auto;margin:0;padding:4px 8px;font-size:12px" onclick="toggleAdminForm('${u.id}')">Acreditar</button>
+        <button style="width:auto;margin:0 0 0 4px;padding:4px 8px;font-size:12px;background:#415a77" onclick="toggleAdminMovimientos('${u.id}')">Historial</button>
+      </td></tr>`;
+    if (adminSaldoFormUser === u.id) {
+      html += `<tr><td colspan="3" style="padding:8px 4px">
+        <input type="number" id="acreditarMonto" placeholder="Monto en Bs" min="1" style="width:130px;margin-bottom:4px">
+        <input type="text" id="acreditarNota" placeholder="Nota (opcional)" style="margin-bottom:4px">
+        <button style="width:auto;margin:0;padding:6px 14px" onclick="confirmarAcreditar('${u.id}')">✓ Confirmar</button>
+      </td></tr>`;
+    }
+  });
+  html += `</table></div>`;
+
+  if (adminMovimientosUser) {
+    const movs = await getMovimientos(adminMovimientosUser);
+    html += `<div class="card">
+      <div style="font-weight:bold;margin-bottom:8px">Historial: ${adminMovimientosUser}</div>
+      <table><tr><th>Fecha</th><th>Tipo</th><th style="text-align:right">Bs</th><th>Nota</th></tr>`;
+    if (movs.length === 0) {
+      html += `<tr><td colspan="4" style="color:#778da9;text-align:center">Sin movimientos</td></tr>`;
+    }
+    movs.forEach(mov => {
+      const fecha = mov.fecha?.toMillis ? new Date(mov.fecha.toMillis()).toLocaleString('es', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+      const c = mov.tipo === 'recarga' ? '#52b788' : '#e63946';
+      const signo = mov.tipo === 'recarga' ? '+' : '-';
+      html += `<tr>
+        <td style="font-size:11px">${fecha}</td>
+        <td style="color:${c}">${mov.tipo}</td>
+        <td style="text-align:right;color:${c}">${signo}${mov.monto}</td>
+        <td style="font-size:11px;color:#778da9">${mov.nota || ''}</td>
+      </tr>`;
+    });
+    html += `</table></div>`;
+  }
+
+  // — Sección partidos —
   const sortedMatches = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const filteredAdmin = applyDateFilter(sortedMatches, adminFilter);
-  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(adminFilter,'setAdminFilter')}</div>`;
+  html += `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(adminFilter,'setAdminFilter')}</div>`;
   let lastDate = '';
   if (filteredAdmin.length === 0) {
     html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
@@ -923,6 +1093,9 @@ async function init() {
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('userLabel').textContent = currentUser;
+    await registerUser(currentUser);
+    currentBalance = await getUserBalance(currentUser);
+    updateBalanceDisplay(currentBalance);
     await renderPartidos();
   } else {
     document.getElementById('login').classList.remove('hidden');
