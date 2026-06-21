@@ -418,9 +418,10 @@ async function descontarYGuardarPick(username, matchId, home, away) {
   const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
   const userRef = doc(db, 'users', username);
   const picksRef = doc(db, 'picks', username);
+  const pagosRef = doc(db, 'config', 'pagos');
   const movRef = doc(collection(db, 'movimientosSaldo'));
   return await runTransaction(db, async (t) => {
-    const [userSnap, picksSnap] = await Promise.all([t.get(userRef), t.get(picksRef)]);
+    const [userSnap, picksSnap, pagosSnap] = await Promise.all([t.get(userRef), t.get(picksRef), t.get(pagosRef)]);
     const saldoActual = userSnap.exists() ? (userSnap.data().saldoActual || 0) : 0;
     const picks = picksSnap.exists() ? picksSnap.data() : {};
     const isNewPick = !picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined;
@@ -433,6 +434,9 @@ async function descontarYGuardarPick(username, matchId, home, away) {
       const match = MATCHES.find(m => m.id === matchId);
       const nota = match ? `Pronóstico: ${match.home} vs ${match.away}` : `Pronóstico partido ${matchId}`;
       t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: 2, fecha: serverTimestamp(), nota, partidoId: matchId });
+      const pagos = pagosSnap.exists() ? pagosSnap.data() : {};
+      pagos[`${matchId}_${username}`] = true;
+      t.set(pagosRef, pagos);
       return newSaldo;
     }
     return saldoActual;
