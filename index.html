@@ -5,33 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spoters Dev Mundial 2026</title>
 <style>
+  :root {
+    --bg-primary:     #0B0F1A;
+    --bg-card:        #131826;
+    --border-card:    #1E2740;
+    --accent-cyan:    #22D3EE;
+    --accent-violet:  #A855F7;
+    --accent-green:   #34D399;
+    --accent-coral:   #F43F5E;
+    --text-primary:   #F1F5F9;
+    --text-secondary: #94A3B8;
+  }
   * { box-sizing: border-box; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-  body { margin:0; background:#0d1b2a; color:#fff; padding-bottom:40px; }
-  header { background:#1b263b; padding:16px; text-align:center; position:sticky; top:0; z-index:10; }
+  body { margin:0; background:var(--bg-primary); color:var(--text-primary); padding-bottom:40px; }
+  header { background:var(--bg-card); padding:16px; text-align:center; position:sticky; top:0; z-index:10; }
   header h1 { margin:0; font-size:20px; }
-  .tabs { display:flex; background:#1b263b; border-bottom:1px solid #415a77; }
+  .tabs { display:flex; background:var(--bg-card); border-bottom:1px solid var(--border-card); }
   .tab { flex:1; padding:12px; text-align:center; cursor:pointer; font-size:14px; }
-  .tab.active { background:#415a77; font-weight:bold; }
+  .tab.active { background:rgba(34,211,238,0.12); border-bottom:1.5px solid var(--accent-cyan); color:var(--accent-cyan); font-weight:bold; }
   .container { padding:12px; max-width:600px; margin:0 auto; }
-  .card { background:#1b263b; border-radius:10px; padding:12px; margin-bottom:10px; }
+  .card { background:var(--bg-card); border-radius:10px; padding:12px; margin-bottom:10px; }
   .match { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .team { flex:1; text-align:center; font-size:13px; }
   input[type=number] { width:50px; text-align:center; padding:6px; border-radius:6px; border:none; font-size:16px; }
-  input[type=number]:disabled { color:#fff; background:#415a77; opacity:1; }
-  .vs { padding:0 6px; color:#778da9; font-size:12px; }
-  .meta { font-size:11px; color:#778da9; margin-top:4px; text-align:center; }
-  button { background:#e63946; color:#fff; border:none; padding:10px 16px; border-radius:6px; font-size:14px; cursor:pointer; width:100%; margin-top:8px; }
-  select, input[type=text] { width:100%; padding:10px; border-radius:6px; border:none; font-size:16px; margin-bottom:8px; }
+  input[type=number]:disabled { color:var(--text-primary); background:var(--border-card); opacity:1; }
+  .vs { padding:0 6px; color:var(--text-secondary); font-size:12px; }
+  .meta { font-size:11px; color:var(--text-secondary); margin-top:4px; text-align:center; }
+  button { background:var(--accent-violet); color:var(--text-primary); border:none; padding:10px 16px; border-radius:6px; font-size:14px; cursor:pointer; width:100%; margin-top:8px; }
+  select, input[type=text] { width:100%; padding:10px; border-radius:6px; border:none; font-size:16px; margin-bottom:8px; background:var(--bg-card); color:var(--text-primary); }
   table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { padding:8px 4px; text-align:left; border-bottom:1px solid #415a77; }
-  th { color:#778da9; font-weight:normal; }
+  th, td { padding:8px 4px; text-align:left; border-bottom:1px solid var(--border-card); }
+  th { color:var(--text-secondary); font-weight:normal; }
   .pos { font-weight:bold; width:24px; }
-  .pts { text-align:right; font-weight:bold; color:#e63946; }
-  .saved { color:#52b788; font-size:12px; text-align:center; margin-top:4px; }
+  .pts { text-align:right; font-weight:bold; color:var(--accent-coral); }
+  .saved { color:var(--accent-green); font-size:12px; text-align:center; margin-top:4px; }
   .hidden { display:none; }
   .login { text-align:center; padding:40px 20px; }
-  .group-title { font-size:13px; color:#778da9; margin:16px 0 6px; padding-left:4px; }
-  .result { font-size:11px; color:#52b788; }
+  .group-title { font-size:13px; color:var(--text-secondary); margin:16px 0 6px; padding-left:4px; }
+  .result { font-size:11px; color:var(--accent-green); }
+
+  @keyframes live-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .live-indicator { animation:live-pulse 1.5s ease-in-out infinite; color:var(--accent-green); }
+
+  .match-card { border:1px solid transparent; }
+  .match-card.closed  { border-color:var(--border-card); }
+  .match-card.live    { border-color:var(--accent-green); box-shadow:0 0 0 1px rgba(52,211,153,0.15); }
+  .match-card.pending { border-color:var(--accent-violet); }
+
+  .match-input-pending { background:#1A1430 !important; border:1px solid var(--accent-violet) !important; color:var(--text-primary) !important; }
+
+  .filter-bar-btn { flex:1; padding:8px 0; background:transparent; border:none; cursor:pointer; border-radius:8px; font-size:13px; color:var(--text-secondary); font-weight:normal; }
+  .filter-bar-btn.active { background:rgba(34,211,238,0.12); border:0.5px solid var(--accent-cyan); color:var(--accent-cyan); font-weight:bold; }
+
+  .current-user-row td { background:rgba(168,85,247,0.06); }
 </style>
 </head>
 <body>
@@ -55,7 +81,7 @@
   </div>
   <div class="container">
     <div style="text-align:right; font-size:12px; color:#778da9; margin-bottom:8px;">
-      Jugando como: <b id="userLabel"></b> | <span id="balanceLabel" style="font-weight:bold"></span> | <a href="#" onclick="logout()" style="color:#e63946;">cambiar</a>
+      Jugando como: <b id="userLabel"></b> | <span id="balanceLabel" style="font-weight:bold"></span> | <a href="#" onclick="logout()" style="color:var(--accent-cyan);">cambiar</a>
     </div>
     <div id="partidos"></div>
     <div id="tabla" class="hidden"></div>
@@ -424,7 +450,7 @@ function updateBalanceDisplay(bal) {
   const el = document.getElementById('balanceLabel');
   if (!el) return;
   el.textContent = `Bs ${Number(bal).toFixed(2)}`;
-  el.style.color = bal < 2 ? '#e63946' : '#52b788';
+  el.style.color = bal < 2 ? 'var(--accent-coral)' : 'var(--accent-green)';
 }
 
 function toggleAdminForm(username) {
@@ -595,19 +621,19 @@ async function renderMas() {
   const pozos = state.pozos || [];
   let pozosHtml;
   if (pozos.length === 0) {
-    pozosHtml = '<div style="font-size:13px;color:#778da9;margin-top:4px">No hay pozos activos.</div>';
+    pozosHtml = '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px">No hay pozos activos.</div>';
   } else {
     const totalPts = pozos.reduce((sum, p) => sum + p.puntos, 0);
     pozosHtml = pozos.map((p, i) =>
-      `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid #1b2a3b':''}">
-        <span style="font-size:22px;font-weight:bold;color:#e63946">${p.puntos} pts</span>
-        <div style="font-size:11px;color:#778da9;margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
+      `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
+        <span style="font-size:22px;font-weight:bold;color:var(--accent-violet)">${p.puntos} pts</span>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
       </div>`
     ).join('') +
-    `<div style="margin-top:10px;font-size:11px;color:#778da9;border-top:1px solid #1b2a3b;padding-top:6px">Total en juego: ${totalPts} pts (${pozos.length} pozo${pozos.length>1?'s':''})</div>`;
+    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${totalPts} pts (${pozos.length} pozo${pozos.length>1?'s':''})</div>`;
   }
   let html = `<div class="card" style="text-align:center">
-    <div style="font-size:12px;color:#778da9;margin-bottom:4px">Pozos activos</div>
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Pozos activos</div>
     ${pozosHtml}
   </div>`;
 
@@ -620,7 +646,7 @@ async function renderMas() {
   html += '</table></div>';
 
   // Historial
-  html += `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(masFilter,'setMasFilter')}</div>`;
+  html += `<div style="display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(masFilter,'setMasFilter')}</div>`;
   const settled = Object.entries(masHistory).sort((a, b) => {
     const skA = (matchMap[Number(a[0])] || {}).sortKey || '99-99T99:99';
     const skB = (matchMap[Number(b[0])] || {}).sortKey || '99-99T99:99';
@@ -635,28 +661,28 @@ async function renderMas() {
       })
     : settled;
   if (filteredSettled.length === 0) {
-    html += `<div class="card" style="color:#778da9;text-align:center">${masFilter === 'hoy' ? 'No hay partidos liquidados hoy.' : 'Aún no hay partidos liquidados.'}</div>`;
+    html += `<div class="card" style="color:var(--text-secondary);text-align:center">${masFilter === 'hoy' ? 'No hay partidos liquidados hoy.' : 'Aún no hay partidos liquidados.'}</div>`;
   }
   filteredSettled.forEach(([mid, s]) => {
     const m = matchMap[Number(mid)];
     const title = m ? `${m.home} vs ${m.away}` : `Partido ${mid}`;
     const matchResult = RESULTS[Number(mid)];
-    const resultScore = matchResult ? ` <b style="color:#e63946">${matchResult.home}-${matchResult.away}</b>` : '';
-    const dateLabel = m ? `<span style="font-size:11px;color:#778da9;margin-left:6px">${m.date.split(' · ')[0]}</span>` : '';
+    const resultScore = matchResult ? ` <b style="color:var(--accent-coral)">${matchResult.home}-${matchResult.away}</b>` : '';
+    const dateLabel = m ? `<span style="font-size:11px;color:var(--text-secondary);margin-left:6px">${m.date.split(' · ')[0]}</span>` : '';
     let resultado;
     if (s.pagos) {
       const ganadores = Object.entries(s.pagos).filter(([,pts]) => pts > 0);
       resultado = ganadores.length > 0
-        ? ganadores.map(([u, pts]) => `${u} <b style="color:#52b788">+${pts} pts</b>`).join(', ')
-        : '<span style="color:#778da9">Nadie acertó — pozos acumulados</span>';
+        ? ganadores.map(([u, pts]) => `${u} <b style="color:var(--accent-green)">+${pts} pts</b>`).join(', ')
+        : '<span style="color:var(--text-secondary)">Nadie acertó — pozos acumulados</span>';
     } else {
       if ((s.acertantesElegibles || []).length > 0) {
-        resultado = s.acertantesElegibles.map(u => `${u} <b style="color:#52b788">+${s.premioElegible} pts</b>`).join(', ');
+        resultado = s.acertantesElegibles.map(u => `${u} <b style="color:var(--accent-green)">+${s.premioElegible} pts</b>`).join(', ');
       } else if ((s.acertantes || []).length > 0) {
-        resultado = s.acertantes.map(u => `${u} <b style="color:#52b788">+${s.premioNoElegible} pts</b>`).join(', ')
-          + ` <span style="color:#778da9">(no elegibles)</span>`;
+        resultado = s.acertantes.map(u => `${u} <b style="color:var(--accent-green)">+${s.premioNoElegible} pts</b>`).join(', ')
+          + ` <span style="color:var(--text-secondary)">(no elegibles)</span>`;
       } else {
-        resultado = '<span style="color:#778da9">Nadie acertó — pozo acumulado</span>';
+        resultado = '<span style="color:var(--text-secondary)">Nadie acertó — pozo acumulado</span>';
       }
     }
     const pozoInfo = s.newPool
@@ -665,9 +691,9 @@ async function renderMas() {
     html += `<div class="card">
       <div style="font-weight:bold;margin-bottom:6px">${title}${resultScore}${dateLabel}</div>
       <table>
-        <tr><td style="color:#778da9">Participantes</td><td>${s.participants.join(', ')}</td></tr>
-        <tr><td style="color:#778da9">Pozos</td><td>${pozoInfo}</td></tr>
-        <tr><td style="color:#778da9">Resultado</td><td>${resultado}</td></tr>
+        <tr><td style="color:var(--text-secondary)">Participantes</td><td>${s.participants.join(', ')}</td></tr>
+        <tr><td style="color:var(--text-secondary)">Pozos</td><td>${pozoInfo}</td></tr>
+        <tr><td style="color:var(--text-secondary)">Resultado</td><td>${resultado}</td></tr>
       </table>
     </div>`;
   });
@@ -712,10 +738,7 @@ function applyDateFilter(matches, filter) {
 
 function filterBarHTML(active, setFn) {
   return ['hoy','todos'].map(f =>
-    `<button onclick="${setFn}('${f}')" style="flex:1;padding:8px 0;border:none;cursor:pointer;border-radius:8px;font-size:13px;` +
-    `font-weight:${active===f?'bold':'normal'};` +
-    `background:${active===f?'#415a77':'transparent'};` +
-    `color:${active===f?'#fff':'#778da9'}">` +
+    `<button onclick="${setFn}('${f}')" class="filter-bar-btn${active===f?' active':''}">` +
     `${f === 'hoy' ? 'Hoy' : 'Todos'}</button>`
   ).join('');
 }
@@ -731,9 +754,9 @@ async function renderPartidos() {
   const RESULTS = await getResults();
   const sorted = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const filteredSorted = applyDateFilter(sorted, partidosFilter);
-  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(partidosFilter,'setPartidosFilter')}</div>`;
+  let html = `<div style="display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(partidosFilter,'setPartidosFilter')}</div>`;
   if (filteredSorted.length === 0) {
-    html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
+    html += `<div class="card" style="text-align:center;color:var(--text-secondary)">No hay partidos disponibles para este criterio.</div>`;
     document.getElementById('partidos').innerHTML = html;
     return;
   }
@@ -750,20 +773,22 @@ async function renderPartidos() {
     const hasPick = p.home !== '' && p.home !== undefined;
     const saldoBloqueado = !locked && !hasPick && currentBalance < 2;
     const playing = !result && isMatchPlaying(m.sortKey);
+    const cardState = playing ? 'live' : (locked || result) ? 'closed' : 'pending';
     const metaDetail = m.date.includes('·') ? m.date.split(' · ').slice(1).join(' · ') : '';
     const savedAtLabel = p.savedAt ? ` · Guardado ${formatPickTime(p.savedAt)}` : '';
     const inputDisabled = locked || saldoBloqueado ? 'disabled' : '';
+    const inputClass = cardState === 'pending' && !locked && !saldoBloqueado ? 'class="match-input-pending"' : '';
     html += `
-    <div class="card">
+    <div class="card match-card ${cardState}">
       <div class="match">
         <div class="team">${m.home}</div>
-        <input type="number" min="0" id="h_${m.id}" value="${p.home}" onchange="updatePick(${m.id})" ${inputDisabled}>
+        <input type="number" min="0" id="h_${m.id}" value="${p.home}" onchange="updatePick(${m.id})" ${inputClass} ${inputDisabled}>
         <span class="vs">-</span>
-        <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${inputDisabled}>
+        <input type="number" min="0" id="a_${m.id}" value="${p.away}" onchange="updatePick(${m.id})" ${inputClass} ${inputDisabled}>
         <div class="team">${m.away}</div>
       </div>
-      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${savedAtLabel}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span style="color:#4caf50">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
-      ${saldoBloqueado ? '<div style="color:#e63946;font-size:12px;text-align:center;margin-top:4px">Saldo insuficiente. Recarga enviando tu comprobante.</div>' : ''}
+      <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${savedAtLabel}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span class="live-indicator">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
+      ${saldoBloqueado ? '<div style="color:var(--accent-coral);font-size:12px;text-align:center;margin-top:4px">Saldo insuficiente. Recarga enviando tu comprobante.</div>' : ''}
       ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:p.home, away:p.away}, result)}</div>` : ''}
     </div>`;
   });
@@ -841,7 +866,7 @@ async function renderTodos() {
   const [picksMap, RESULTS, pagos] = await Promise.all([getAllPicks(users), getResults(), getPagos()]);
   const sorted = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const filteredSorted = applyDateFilter(sorted, todosFilter);
-  let html = `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(todosFilter,'setTodosFilter')}</div>`;
+  let html = `<div style="display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(todosFilter,'setTodosFilter')}</div>`;
   if (filteredSorted.length === 0) {
     html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
     document.getElementById('todos').innerHTML = html;
@@ -854,14 +879,14 @@ async function renderTodos() {
     for (const u of users) {
       const p = picksMap[u][m.id];
       const hasPick = p && p.home !== '' && p.home !== undefined;
-      const timeLabel = hasPick && p.savedAt ? `<span style="color:#778da9;font-size:10px;margin-left:4px">${formatPickTime(p.savedAt)}</span>` : '';
+      const timeLabel = hasPick && p.savedAt ? `<span style="color:var(--text-secondary);font-size:10px;margin-left:4px">${formatPickTime(p.savedAt)}</span>` : '';
       const val = hasPick ? `${p.home} - ${p.away}${timeLabel}` : '—';
       const pagoIndicator = hasPick
         ? (!!pagos[`${m.id}_${u}`]
-          ? '<span style="color:#52b788;font-size:10px;margin-left:4px">● Pagó</span>'
-          : '<span style="color:#e63946;font-size:10px;margin-left:4px">● No pagó</span>')
+          ? '<span style="color:var(--accent-green);font-size:10px;margin-left:4px">● Pagó</span>'
+          : '<span style="color:var(--accent-coral);font-size:10px;margin-left:4px">● No pagó</span>')
         : '';
-      html += `<tr><td>${u}${u===currentUser?' (tú)':''}${pagoIndicator}</td><td style="text-align:right">${val}</td></tr>`;
+      html += `<tr${u===currentUser?' class="current-user-row"':''}><td>${u}${u===currentUser?' (tú)':''}${pagoIndicator}</td><td style="text-align:right">${val}</td></tr>`;
     }
     html += '</table></div>';
   }
@@ -888,7 +913,7 @@ async function renderAdmin() {
   let html = `<div class="group-title">Saldos de jugadores</div><div class="card"><table>
     <tr><th>Jugador</th><th style="text-align:right">Saldo</th><th></th></tr>`;
   allUsersData.sort((a,b) => a.id.localeCompare(b.id)).forEach(u => {
-    const sc = u.saldoActual < 2 ? '#e63946' : '#52b788';
+    const sc = u.saldoActual < 2 ? 'var(--accent-coral)' : 'var(--accent-green)';
     html += `<tr>
       <td>${u.id}</td>
       <td style="text-align:right;color:${sc};font-weight:bold">Bs ${u.saldoActual.toFixed(2)}</td>
@@ -912,17 +937,17 @@ async function renderAdmin() {
       <div style="font-weight:bold;margin-bottom:8px">Historial: ${adminMovimientosUser}</div>
       <table><tr><th>Fecha</th><th>Tipo</th><th style="text-align:right">Bs</th><th>Nota</th></tr>`;
     if (movs.length === 0) {
-      html += `<tr><td colspan="4" style="color:#778da9;text-align:center">Sin movimientos</td></tr>`;
+      html += `<tr><td colspan="4" style="color:var(--text-secondary);text-align:center">Sin movimientos</td></tr>`;
     }
     movs.forEach(mov => {
       const fecha = mov.fecha?.toMillis ? new Date(mov.fecha.toMillis()).toLocaleString('es', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-      const c = mov.tipo === 'recarga' ? '#52b788' : '#e63946';
+      const c = mov.tipo === 'recarga' ? 'var(--accent-green)' : 'var(--accent-coral)';
       const signo = mov.tipo === 'recarga' ? '+' : '-';
       html += `<tr>
         <td style="font-size:11px">${fecha}</td>
         <td style="color:${c}">${mov.tipo}</td>
         <td style="text-align:right;color:${c}">${signo}${mov.monto}</td>
-        <td style="font-size:11px;color:#778da9">${mov.nota || ''}</td>
+        <td style="font-size:11px;color:var(--text-secondary)">${mov.nota || ''}</td>
       </tr>`;
     });
     html += `</table></div>`;
@@ -931,10 +956,10 @@ async function renderAdmin() {
   // — Sección partidos —
   const sortedMatches = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const filteredAdmin = applyDateFilter(sortedMatches, adminFilter);
-  html += `<div style="display:flex;gap:4px;background:#1b263b;padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(adminFilter,'setAdminFilter')}</div>`;
+  html += `<div style="display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(adminFilter,'setAdminFilter')}</div>`;
   let lastDate = '';
   if (filteredAdmin.length === 0) {
-    html += `<div class="card" style="text-align:center;color:#778da9">No hay partidos disponibles para este criterio.</div>`;
+    html += `<div class="card" style="text-align:center;color:var(--text-secondary)">No hay partidos disponibles para este criterio.</div>`;
   }
   filteredAdmin.forEach(m => {
     const dateLabel = m.date.includes('·') ? m.date.split(' · ')[0] : m.date;
@@ -950,15 +975,15 @@ async function renderAdmin() {
     });
     let pagosBlock = '';
     if (usersWithPick.length > 0) {
-      pagosBlock = `<div style="margin-top:8px;border-top:1px solid #415a77;padding-top:8px">
-        <div style="font-size:11px;color:#778da9;margin-bottom:4px">Pagos</div>
+      pagosBlock = `<div style="margin-top:8px;border-top:1px solid var(--border-card);padding-top:8px">
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Pagos</div>
         <table>`;
       usersWithPick.forEach(u => {
         const paid = !!pagos[`${m.id}_${u}`];
         pagosBlock += `<tr>
           <td>${u}</td>
           <td style="text-align:right">
-            <button style="width:auto;margin:0;padding:4px 10px;font-size:12px;background:${paid?'#52b788':'#e63946'}" onclick="togglePago(${m.id}, '${u}', ${!paid})">
+            <button style="width:auto;margin:0;padding:4px 10px;font-size:12px;background:${paid?'var(--accent-green)':'var(--accent-coral)'}" onclick="togglePago(${m.id}, '${u}', ${!paid})">
               ${paid ? '✓ Pagó' : '✗ No pagó'}
             </button>
           </td>
@@ -975,7 +1000,7 @@ async function renderAdmin() {
         <input type="number" min="0" id="ra_${m.id}" value="${r.away}" style="width:50px">
         <button style="width:auto; flex:1; margin:0;" onclick="saveResult(${m.id})">Guardar resultado</button>
       </div>
-      <button style="background:${locked?'#52b788':'#e63946'}" onclick="toggleLock(${m.id}, ${!locked})">
+      <button style="background:${locked?'var(--accent-green)':'var(--accent-coral)'}" onclick="toggleLock(${m.id}, ${!locked})">
         ${locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
       </button>
       ${pagosBlock}
@@ -986,11 +1011,11 @@ async function renderAdmin() {
   html += `<div class="group-title">MÁS — Liquidar partidos</div>`;
   const adminPozos = masState.pozos || [];
   if (adminPozos.length === 0) {
-    html += `<div class="card" style="text-align:center;color:#778da9">Sin pozos activos</div>`;
+    html += `<div class="card" style="text-align:center;color:var(--text-secondary)">Sin pozos activos</div>`;
   } else {
     html += `<div class="card"><table>`;
     adminPozos.forEach((p, i) => {
-      html += `<tr><td style="color:#778da9">Pozo ${i+1}</td><td><b style="color:#e63946">${p.puntos} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
+      html += `<tr><td style="color:var(--text-secondary)">Pozo ${i+1}</td><td><b style="color:var(--accent-violet)">${p.puntos} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
     });
     html += `</table></div>`;
   }
@@ -1015,7 +1040,7 @@ async function renderAdmin() {
       const totalDist = s.pozosLiquidados ? s.pozosLiquidados.reduce((sum,p) => sum+p.puntos, 0) : (s.pozoPartido + s.pozoAcumuladoAntes);
       html += `<div class="card">
         <b>${m.home} vs ${m.away}</b>
-        <div class="meta" style="color:#52b788">✓ Liquidado · Distribuido: ${totalDist} pts · ${gan}</div>
+        <div class="meta" style="color:var(--accent-green)">✓ Liquidado · Distribuido: ${totalDist} pts · ${gan}</div>
         <button style="background:#415a77;margin-top:6px" onclick="resetMas(${m.id})">🔄 Reliquidar</button>
       </div>`;
     } else {
