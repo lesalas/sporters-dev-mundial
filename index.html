@@ -424,7 +424,8 @@ async function descontarYGuardarPick(username, matchId, home, away) {
     const [userSnap, picksSnap, pagosSnap] = await Promise.all([t.get(userRef), t.get(picksRef), t.get(pagosRef)]);
     const saldoActual = userSnap.exists() ? (userSnap.data().saldoActual || 0) : 0;
     const picks = picksSnap.exists() ? picksSnap.data() : {};
-    const isNewPick = !picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined;
+    const alreadyPaid = pagosSnap.exists() && !!pagosSnap.data()[`${matchId}_${username}`];
+    const isNewPick = !alreadyPaid && (!picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined);
     if (isNewPick && saldoActual < 2) throw new Error('Saldo insuficiente');
     picks[matchId] = { home, away, savedAt: new Date().toISOString() };
     t.set(picksRef, picks);
@@ -800,35 +801,40 @@ async function renderPartidos() {
 }
 
 let saveTimeout;
+let pickDebounceTimers = {};
+
 async function updatePick(matchId) {
-  const locks = await getLocks();
-  if (locks[matchId]) { alert('Este partido ya está cerrado.'); init(); return; }
-  const home = document.getElementById('h_'+matchId).value;
-  const away = document.getElementById('a_'+matchId).value;
-  let newBalance;
-  try {
-    newBalance = await descontarYGuardarPick(currentUser, matchId, home, away);
-  } catch(e) {
-    if (e.message === 'Saldo insuficiente') {
-      alert('Saldo insuficiente. Recarga tu saldo enviando tu comprobante.');
-    } else {
-      console.error(e);
-      alert('Error al guardar el pronóstico.');
+  const cardEl = event.target.closest('.card');
+  clearTimeout(pickDebounceTimers[matchId]);
+  pickDebounceTimers[matchId] = setTimeout(async () => {
+    const locks = await getLocks();
+    if (locks[matchId]) { alert('Este partido ya está cerrado.'); init(); return; }
+    const home = document.getElementById('h_'+matchId).value;
+    const away = document.getElementById('a_'+matchId).value;
+    let newBalance;
+    try {
+      newBalance = await descontarYGuardarPick(currentUser, matchId, home, away);
+    } catch(e) {
+      if (e.message === 'Saldo insuficiente') {
+        alert('Saldo insuficiente. Recarga tu saldo enviando tu comprobante.');
+      } else {
+        console.error(e);
+        alert('Error al guardar el pronóstico.');
+      }
+      return;
     }
-    return;
-  }
-  currentBalance = newBalance;
-  updateBalanceDisplay(newBalance);
-  clearTimeout(saveTimeout);
-  const card = event.target.closest('.card');
-  let msg = card.querySelector('.saved');
-  if (!msg) {
-    msg = document.createElement('div');
-    msg.className = 'saved';
-    msg.textContent = '✓ Guardado';
-    card.appendChild(msg);
-  }
-  saveTimeout = setTimeout(() => msg.remove(), 1500);
+    currentBalance = newBalance;
+    updateBalanceDisplay(newBalance);
+    clearTimeout(saveTimeout);
+    let msg = cardEl.querySelector('.saved');
+    if (!msg) {
+      msg = document.createElement('div');
+      msg.className = 'saved';
+      msg.textContent = '✓ Guardado';
+      cardEl.appendChild(msg);
+    }
+    saveTimeout = setTimeout(() => msg.remove(), 1500);
+  }, 400);
 }
 
 async function renderTabla() {
