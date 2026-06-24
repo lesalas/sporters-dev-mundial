@@ -243,6 +243,7 @@ let currentUser = localStorage.getItem('quiniela_user') || null;
 let currentBalance = 0;
 let adminSaldoFormUser = null;
 let adminMovimientosUser = null;
+let adminDescontarFormUser = null;
 
 function login() {
   const name = document.getElementById('nameInput').value.trim();
@@ -414,6 +415,18 @@ async function acreditarSaldo(username, monto, nota) {
   });
 }
 
+async function descontarSaldoManual(username, monto, nota) {
+  const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
+  const userRef = doc(db, 'users', username);
+  const movRef  = doc(collection(db, 'movimientosSaldo'));
+  await runTransaction(db, async (t) => {
+    const snap = await t.get(userRef);
+    const saldoActual = snap.exists() ? (snap.data().saldoActual || 0) : 0;
+    t.set(userRef, { name: username, saldoActual: saldoActual - monto }, { merge: true });
+    t.set(movRef, { usuarioId: username, tipo: 'ajuste', monto, fecha: serverTimestamp(), nota: nota || 'Ajuste manual', partidoId: null });
+  });
+}
+
 async function descontarYGuardarPick(username, matchId, home, away) {
   const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
   const userRef = doc(db, 'users', username);
@@ -481,6 +494,27 @@ async function confirmarAcreditar(username) {
   }
   adminSaldoFormUser = null;
   alert(`✓ Bs ${monto} acreditados a ${username}`);
+  renderAdmin();
+}
+
+function toggleAdminDescontar(username) {
+  adminDescontarFormUser = adminDescontarFormUser === username ? null : username;
+  adminSaldoFormUser = null;
+  adminMovimientosUser = null;
+  renderAdmin();
+}
+
+async function confirmarDescontar(username) {
+  const monto = parseFloat(document.getElementById('descontarMonto').value);
+  const nota = document.getElementById('descontarNota').value.trim() || 'Ajuste manual';
+  if (isNaN(monto) || monto <= 0) { alert('Ingresa un monto válido'); return; }
+  await descontarSaldoManual(username, monto, nota);
+  if (username === currentUser) {
+    currentBalance = await getUserBalance(currentUser);
+    updateBalanceDisplay(currentBalance);
+  }
+  adminDescontarFormUser = null;
+  alert(`✓ Bs ${monto} descontados de ${username}`);
   renderAdmin();
 }
 
@@ -811,6 +845,7 @@ async function updatePick(matchId) {
     if (locks[matchId]) { alert('Este partido ya está cerrado.'); init(); return; }
     const home = document.getElementById('h_'+matchId).value;
     const away = document.getElementById('a_'+matchId).value;
+    if (home === '' || away === '') return;
     let newBalance;
     try {
       newBalance = await descontarYGuardarPick(currentUser, matchId, home, away);
@@ -929,6 +964,7 @@ async function renderAdmin() {
       <td style="text-align:right;color:${sc};font-weight:bold">Bs ${u.saldoActual.toFixed(2)}</td>
       <td style="text-align:right;white-space:nowrap">
         <button style="width:auto;margin:0;padding:4px 8px;font-size:12px" onclick="toggleAdminForm('${u.id}')">Acreditar</button>
+        <button style="width:auto;margin:0 0 0 4px;padding:4px 8px;font-size:12px;background:var(--accent-coral)" onclick="toggleAdminDescontar('${u.id}')">Descontar</button>
         <button style="width:auto;margin:0 0 0 4px;padding:4px 8px;font-size:12px;background:#415a77" onclick="toggleAdminMovimientos('${u.id}')">Historial</button>
       </td></tr>`;
     if (adminSaldoFormUser === u.id) {
@@ -936,6 +972,13 @@ async function renderAdmin() {
         <input type="number" id="acreditarMonto" placeholder="Monto en Bs" min="1" style="width:130px;margin-bottom:4px">
         <input type="text" id="acreditarNota" placeholder="Nota (opcional)" style="margin-bottom:4px">
         <button style="width:auto;margin:0;padding:6px 14px" onclick="confirmarAcreditar('${u.id}')">✓ Confirmar</button>
+      </td></tr>`;
+    }
+    if (adminDescontarFormUser === u.id) {
+      html += `<tr><td colspan="3" style="padding:8px 4px">
+        <input type="number" id="descontarMonto" placeholder="Monto en Bs" min="0.01" step="0.01" style="width:130px;margin-bottom:4px">
+        <input type="text" id="descontarNota" placeholder="Nota (ej: Corrección 23/06)" style="margin-bottom:4px">
+        <button style="width:auto;margin:0;padding:6px 14px;background:var(--accent-coral)" onclick="confirmarDescontar('${u.id}')">✓ Confirmar descuento</button>
       </td></tr>`;
     }
   });
