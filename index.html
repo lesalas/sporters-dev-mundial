@@ -680,11 +680,11 @@ async function renderMas() {
     const totalPts = pozos.reduce((sum, p) => sum + p.puntos, 0);
     pozosHtml = pozos.map((p, i) =>
       `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
-        <span style="font-size:22px;font-weight:bold;color:var(--accent-violet)">${p.puntos} pts</span>
+        <span style="font-size:22px;font-weight:bold;color:var(--accent-violet)">${Number(p.puntos).toFixed(2)} pts</span>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
       </div>`
     ).join('') +
-    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${totalPts} pts (${pozos.length} pozo${pozos.length>1?'s':''})</div>`;
+    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${Number(totalPts).toFixed(2)} pts (${pozos.length} pozo${pozos.length>1?'s':''})</div>`;
   }
   let html = `<div class="card" style="text-align:center">
     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Pozos activos</div>
@@ -695,7 +695,7 @@ async function renderMas() {
   html += `<div class="card"><table>
     <tr><th></th><th>Jugador</th><th class="pts">MÁS pts</th></tr>`;
   sorted.forEach(([u,pts],i) => {
-    html += `<tr><td class="pos">${i+1}</td><td>${u}${u===currentUser?' (tú)':''}</td><td class="pts">${pts}</td></tr>`;
+    html += `<tr><td class="pos">${i+1}</td><td>${u}${u===currentUser?' (tú)':''}</td><td class="pts">${Number(pts).toFixed(2)}</td></tr>`;
   });
   html += '</table></div>';
 
@@ -727,21 +727,21 @@ async function renderMas() {
     if (s.pagos) {
       const ganadores = Object.entries(s.pagos).filter(([,pts]) => pts > 0);
       resultado = ganadores.length > 0
-        ? ganadores.map(([u, pts]) => `${u} <b style="color:var(--accent-green)">+${pts} pts</b>`).join(', ')
+        ? ganadores.map(([u, pts]) => `${u} <b style="color:var(--accent-green)">+${Number(pts).toFixed(2)} pts</b>`).join(', ')
         : '<span style="color:var(--text-secondary)">Nadie acertó — pozos acumulados</span>';
     } else {
       if ((s.acertantesElegibles || []).length > 0) {
-        resultado = s.acertantesElegibles.map(u => `${u} <b style="color:var(--accent-green)">+${s.premioElegible} pts</b>`).join(', ');
+        resultado = s.acertantesElegibles.map(u => `${u} <b style="color:var(--accent-green)">+${Number(s.premioElegible).toFixed(2)} pts</b>`).join(', ');
       } else if ((s.acertantes || []).length > 0) {
-        resultado = s.acertantes.map(u => `${u} <b style="color:var(--accent-green)">+${s.premioNoElegible} pts</b>`).join(', ')
+        resultado = s.acertantes.map(u => `${u} <b style="color:var(--accent-green)">+${Number(s.premioNoElegible).toFixed(2)} pts</b>`).join(', ')
           + ` <span style="color:var(--text-secondary)">(no elegibles)</span>`;
       } else {
         resultado = '<span style="color:var(--text-secondary)">Nadie acertó — pozo acumulado</span>';
       }
     }
     const pozoInfo = s.newPool
-      ? `Nuevo pozo: ${s.newPool.puntos} pts · Pozos liquidados: ${(s.pozosLiquidados||[]).length}`
-      : `Pozo partido: ${s.pozoPartido} pts · Acumulado previo: ${s.pozoAcumuladoAntes} pts`;
+      ? `Nuevo pozo: ${Number(s.newPool.puntos).toFixed(2)} pts · Pozos liquidados: ${(s.pozosLiquidados||[]).length}`
+      : `Pozo partido: ${Number(s.pozoPartido).toFixed(2)} pts · Acumulado previo: ${Number(s.pozoAcumuladoAntes).toFixed(2)} pts`;
     html += `<div class="card">
       <div style="font-weight:bold;margin-bottom:6px">${title}${resultScore}${dateLabel}</div>
       <table>
@@ -1083,7 +1083,7 @@ async function renderAdmin() {
   } else {
     html += `<div class="card"><table>`;
     adminPozos.forEach((p, i) => {
-      html += `<tr><td style="color:var(--text-secondary)">Pozo ${i+1}</td><td><b style="color:var(--accent-violet)">${p.puntos} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
+      html += `<tr><td style="color:var(--text-secondary)">Pozo ${i+1}</td><td><b style="color:var(--accent-violet)">${Number(p.puntos).toFixed(2)} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
     });
     html += `</table></div>`;
   }
@@ -1099,16 +1099,16 @@ async function renderAdmin() {
       let gan;
       if (s.pagos) {
         const ganadores = Object.entries(s.pagos).filter(([,pts]) => pts > 0);
-        gan = ganadores.length > 0 ? ganadores.map(([u,pts]) => `${u} (+${pts}pts)`).join(', ') : 'Nadie acertó';
+        gan = ganadores.length > 0 ? ganadores.map(([u,pts]) => `${u} (+${Number(pts).toFixed(2)}pts)`).join(', ') : 'Nadie acertó';
       } else {
         gan = (s.acertantesElegibles||[]).length > 0
-          ? s.acertantesElegibles.join(', ') + ` (+${s.premioElegible} pts)`
+          ? s.acertantesElegibles.join(', ') + ` (+${Number(s.premioElegible).toFixed(2)} pts)`
           : (s.acertantes||[]).length > 0 ? s.acertantes.join(', ') + ' (no eleg.)' : 'Nadie acertó';
       }
       const totalDist = s.pozosLiquidados ? s.pozosLiquidados.reduce((sum,p) => sum+p.puntos, 0) : (s.pozoPartido + s.pozoAcumuladoAntes);
       html += `<div class="card">
         <b>${m.home} vs ${m.away}</b>
-        <div class="meta" style="color:var(--accent-green)">✓ Liquidado · Distribuido: ${totalDist} pts · ${gan}</div>
+        <div class="meta" style="color:var(--accent-green)">✓ Liquidado · Distribuido: ${Number(totalDist).toFixed(2)} pts · ${gan}</div>
         <button style="background:#415a77;margin-top:6px" onclick="resetMas(${m.id})">🔄 Reliquidar</button>
       </div>`;
     } else {
