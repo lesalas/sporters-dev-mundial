@@ -872,20 +872,27 @@ async function renderMas() {
   });
   const sorted = Object.entries(balances).sort((a,b) => b[1]-a[1]);
 
-  // Card pozos activos
-  const pozos = state.pozos || [];
+  // Card pozos activos (regulares + alargue unificados)
+  const pozos  = state.pozos || [];
+  const pozosA = alargueState.pozos || [];
+  const allPozosDisplay = [
+    ...pozos.map(p => ({ ...p, tipo: 'regular' })),
+    ...pozosA.map(p => ({ ...p, tipo: 'alargue' }))
+  ];
   let pozosHtml;
-  if (pozos.length === 0) {
+  if (allPozosDisplay.length === 0) {
     pozosHtml = '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px">No hay pozos activos.</div>';
   } else {
-    const totalPts = pozos.reduce((sum, p) => sum + p.puntos, 0);
-    pozosHtml = pozos.map((p, i) =>
-      `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
-        <span style="font-size:22px;font-weight:bold;color:var(--accent-violet)">${Number(p.puntos).toFixed(2)} pts</span>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
-      </div>`
-    ).join('') +
-    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${Number(totalPts).toFixed(2)} pts (${pozos.length} pozo${pozos.length>1?'s':''})</div>`;
+    const totalPts = allPozosDisplay.reduce((sum, p) => sum + p.puntos, 0);
+    pozosHtml = allPozosDisplay.map((p, i) => {
+      const color = p.tipo === 'alargue' ? 'var(--accent-cyan)' : 'var(--accent-violet)';
+      const label = p.tipo === 'alargue' ? ' <span style="font-size:10px">⚡ Alargue</span>' : '';
+      return `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
+        <span style="font-size:22px;font-weight:bold;color:${color}">${Number(p.puntos).toFixed(2)} pts</span>${label}
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${(p.elegibles||[]).join(', ')}</div>
+      </div>`;
+    }).join('') +
+    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${Number(totalPts).toFixed(2)} pts (${allPozosDisplay.length} pozo${allPozosDisplay.length>1?'s':''})</div>`;
   }
   let html = `<div class="card" style="text-align:center">
     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Pozos activos</div>
@@ -955,26 +962,6 @@ async function renderMas() {
 
   // — Sección Alargue —
   html += `<div class="group-title" style="color:var(--accent-cyan)">⚡ MÁS Alargue</div>`;
-
-  // Pozos activos alargue
-  const pozosA = alargueState.pozos || [];
-  let pozosAlargueHtml;
-  if (pozosA.length === 0) {
-    pozosAlargueHtml = '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px">No hay pozos de alargue activos.</div>';
-  } else {
-    const totalPtsA = pozosA.reduce((sum, p) => sum + p.puntos, 0);
-    pozosAlargueHtml = pozosA.map((p, i) =>
-      `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
-        <span style="font-size:22px;font-weight:bold;color:var(--accent-cyan)">${Number(p.puntos).toFixed(2)} pts</span>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
-      </div>`
-    ).join('') +
-    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${Number(totalPtsA).toFixed(2)} pts (${pozosA.length} pozo${pozosA.length>1?'s':''})</div>`;
-  }
-  html += `<div class="card" style="text-align:center">
-    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Pozos activos alargue</div>
-    ${pozosAlargueHtml}
-  </div>`;
 
   // Leaderboard alargue
   const balancesA = {};
