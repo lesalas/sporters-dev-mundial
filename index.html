@@ -1395,12 +1395,11 @@ async function _renderAdminInner() {
       const alargueData = alargues[m.id];
       const disponible = !!alargueData?.disponible;
       const resultA = alargueData?.resultadoAlargue;
-      const hubExacto = allUsers.some(u => calcPoints(picksMap[u][m.id] || {}, r) === 1);
-      if (!hubExacto || alargueData) {
+      if (r.home == r.away || alargueData) {
         alargueAdminBlock = `<div style="margin-top:8px;border-top:1px solid var(--border-card);padding-top:8px">
           <div style="font-size:12px;font-weight:bold;color:var(--accent-cyan);margin-bottom:6px">⚡ Alargue</div>`;
-        if (!hubExacto && !alargueData) {
-          alargueAdminBlock += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Nadie acertó en 90 min.</div>`;
+        if (r.home == r.away && !alargueData) {
+          alargueAdminBlock += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Empate en 90 min.</div>`;
         }
         if (!disponible && !resultA) {
           alargueAdminBlock += `<button style="background:var(--accent-cyan);color:#000;width:auto;padding:6px 14px;font-size:12px;margin-bottom:6px" onclick="setAlargueDisponible(${m.id}, true)">⚡ Abrir alargue</button>`;
