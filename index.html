@@ -1298,7 +1298,7 @@ async function renderAdmin() {
       </div>`;
     return;
   }
-  const [locks, RESULTS, allUsers, pagos, allUsersData, alargues] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos(), getAllUsersData(), getAlargues()]);
+  const [locks, RESULTS, allUsers, pagos, allUsersData, alargues, masAlargueHistory] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos(), getAllUsersData(), getAlargues(), getMasAlargueHistory()]);
   const picksMap = await getAllPicks(allUsers);
 
   // — Sección saldos —
@@ -1453,7 +1453,7 @@ async function renderAdmin() {
     </div>`;
   });
   // Sección MÁS
-  const [masState, masHistory, masResults, masAlargueHistory] = await Promise.all([getMasState(), getMasHistory(), getResults(), getMasAlargueHistory()]);
+  const [masState, masHistory, masResults] = await Promise.all([getMasState(), getMasHistory(), getResults()]);
   html += `<div class="group-title">MÁS — Liquidar partidos</div>`;
   const adminPozos = masState.pozos || [];
   if (adminPozos.length === 0) {
