@@ -789,37 +789,45 @@ async function settleAlargue(matchId) {
     return parseInt(p.home) === resultA.home && parseInt(p.away) === resultA.away;
   });
 
-  const state = await getMasAlargueState();
-  const pozosAntes = state.pozos || [];
+  // Combinar TODOS los pozos: regulares + alargue acumulados + nuevo pozo de este alargue
+  const [masRegularState, masAlargueStateData] = await Promise.all([getMasState(), getMasAlargueState()]);
+  const pozosAntesRegular = masRegularState.pozos || [];
+  const pozosAntesAlargue = masAlargueStateData.pozos || [];
   const newPool = { matchId, puntos: participants.length * 2, elegibles: participants };
-  const allPozos = [...pozosAntes, newPool];
+  const allPozos = [...pozosAntesRegular, ...pozosAntesAlargue, newPool];
 
   const pagos = {};
-  const pozosLiquidados = [];
-  const pozosQuedan = [];
+  let pozosLiquidados = [];
+  let pozosQuedan = [];
 
-  allPozos.forEach(pozo => {
-    const ganadores = acertantes.filter(u => pozo.elegibles.includes(u));
-    if (ganadores.length > 0) {
-      const premioPerGanador = pozo.puntos / ganadores.length;
-      ganadores.forEach(u => { pagos[u] = (pagos[u] || 0) + premioPerGanador; });
-      pozosLiquidados.push({ ...pozo, ganadores, premioPerGanador });
-    } else {
-      pozosQuedan.push(pozo);
-    }
-  });
+  // El ganador del alargue se lleva TODOS los pozos disponibles (sin filtro de elegibles)
+  if (acertantes.length > 0) {
+    const totalPuntos = allPozos.reduce((sum, p) => sum + p.puntos, 0);
+    const premioPerGanador = totalPuntos / acertantes.length;
+    acertantes.forEach(u => { pagos[u] = premioPerGanador; });
+    pozosLiquidados = allPozos.map(p => ({ ...p, ganadores: acertantes, premioPerGanador }));
+    pozosQuedan = [];
+  } else {
+    pozosQuedan = allPozos;
+    pozosLiquidados = [];
+  }
 
   await setDoc(doc(db, 'masAlargue', String(matchId)), {
     participants,
     acertantes,
-    pozosAntes,
+    pozosAntesRegular,
+    pozosAntesAlargue,
     newPool,
     pozosLiquidados,
     pozosDespues: pozosQuedan,
     pagos
   });
 
-  await setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: pozosQuedan });
+  // Los pozos restantes pasan al estado de alargue; el estado regular se limpia
+  await Promise.all([
+    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: pozosQuedan }),
+    setDoc(doc(db, 'config', 'mas_state'), { pozos: [] })
+  ]);
 
   alert('✓ Alargue liquidado');
   renderAdmin();
@@ -833,8 +841,12 @@ async function resetAlargue(matchId) {
   const snap = await getDoc(doc(db, 'masAlargue', String(matchId)));
   if (!snap.exists()) { alert('No hay liquidación de alargue para revertir.'); return; }
   const s = snap.data();
-  await setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: s.pozosAntes || [] });
-  await deleteDoc(doc(db, 'masAlargue', String(matchId)));
+  // Restaurar AMBOS estados al momento previo a la liquidación
+  await Promise.all([
+    setDoc(doc(db, 'config', 'mas_state'), { pozos: s.pozosAntesRegular || [] }),
+    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: s.pozosAntesAlargue || [] }),
+    deleteDoc(doc(db, 'masAlargue', String(matchId)))
+  ]);
   alert('✓ Liquidación de alargue revertida. Ya puedes volver a liquidar.');
   renderAdmin();
   renderMas();
