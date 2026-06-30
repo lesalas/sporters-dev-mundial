@@ -713,10 +713,11 @@ async function settleMas(matchId) {
     return parseInt(p.home) === result.home && parseInt(p.away) === result.away;
   });
 
-  const state = await getMasState();
-  const pozosAntes = state.pozos || [];
+  const [state, alargueState] = await Promise.all([getMasState(), getMasAlargueState()]);
+  const pozosAntesRegular = state.pozos || [];
+  const pozosAntesAlargue = alargueState.pozos || [];
   const newPool = { matchId, puntos: participants.length * 2, elegibles: participants, tipo: 'regular' };
-  const allPozos = [...pozosAntes, newPool];
+  const allPozos = [...pozosAntesRegular, ...pozosAntesAlargue, newPool];
 
   const pagos = {};
   const pozosLiquidados = [];
@@ -738,14 +739,18 @@ async function settleMas(matchId) {
   await setDoc(doc(db, 'mas', String(matchId)), {
     participants,
     acertantes,
-    pozosAntes,
+    pozosAntes: pozosAntesRegular,
+    pozosAntesAlargue,
     newPool,
     pozosLiquidados,
     pozosDespues,
     pagos
   });
 
-  await setDoc(doc(db, 'config', 'mas_state'), { pozos: pozosDespues });
+  await Promise.all([
+    setDoc(doc(db, 'config', 'mas_state'), { pozos: pozosDespues }),
+    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: [] })
+  ]);
 
   alert('✓ Partido liquidado');
   renderAdmin();
@@ -759,8 +764,11 @@ async function resetMas(matchId) {
   const snap = await getDoc(doc(db, 'mas', String(matchId)));
   if (!snap.exists()) { alert('No hay liquidación para revertir.'); return; }
   const s = snap.data();
-  await setDoc(doc(db, 'config', 'mas_state'), { pozos: s.pozosAntes || [] });
-  await deleteDoc(doc(db, 'mas', String(matchId)));
+  await Promise.all([
+    setDoc(doc(db, 'config', 'mas_state'), { pozos: s.pozosAntes || [] }),
+    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: s.pozosAntesAlargue || [] }),
+    deleteDoc(doc(db, 'mas', String(matchId)))
+  ]);
   alert('✓ Liquidación revertida. Ya puedes volver a liquidar.');
   renderAdmin();
   renderMas();
@@ -1444,15 +1452,16 @@ async function _renderAdminInner() {
     </div>`;
   });
   // Sección MÁS
-  const [masState, masHistory, masResults] = await Promise.all([getMasState(), getMasHistory(), getResults()]);
+  const [masState, masAlargueState, masHistory, masResults] = await Promise.all([getMasState(), getMasAlargueState(), getMasHistory(), getResults()]);
   html += `<div class="group-title">MÁS — Liquidar partidos</div>`;
-  const adminPozos = masState.pozos || [];
+  const adminPozos = [...(masState.pozos || []), ...(masAlargueState.pozos || [])];
   if (adminPozos.length === 0) {
     html += `<div class="card" style="text-align:center;color:var(--text-secondary)">Sin pozos activos</div>`;
   } else {
     html += `<div class="card"><table>`;
     adminPozos.forEach((p, i) => {
-      html += `<tr><td style="color:var(--text-secondary)">Pozo ${i+1}</td><td><b style="color:var(--accent-violet)">${Number(p.puntos).toFixed(2)} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
+      const tipo = p.tipo === 'alargue' ? ' (alargue)' : '';
+      html += `<tr><td style="color:var(--text-secondary)">Pozo ${i+1}${tipo}</td><td><b style="color:var(--accent-violet)">${Number(p.puntos).toFixed(2)} pts</b> · Elegibles: ${p.elegibles.join(', ')}</td></tr>`;
     });
     html += `</table></div>`;
   }
