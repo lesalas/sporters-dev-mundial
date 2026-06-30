@@ -1084,7 +1084,8 @@ async function renderTodos() {
         : '';
       html += `<tr${u===currentUser?' class="current-user-row"':''}><td>${u}${u===currentUser?' (tú)':''}${pagoIndicator}</td><td style="text-align:right">${val}</td></tr>`;
     }
-    if (isEliminacion(m.group) && alargues[m.id] && (alargues[m.id].disponible || alargues[m.id].resultadoAlargue)) {
+    const hasAlarguePicks = users.some(u => { const pA = picksMap[u][`alargue_${m.id}`]; return pA && pA.home !== '' && pA.home !== undefined; });
+    if (isEliminacion(m.group) && alargues[m.id] && (alargues[m.id].disponible || alargues[m.id].resultadoAlargue || hasAlarguePicks)) {
       const resultA = alargues[m.id].resultadoAlargue;
       const resultAStr = resultA ? ` · <b style="color:var(--accent-cyan)">${resultA.home}-${resultA.away}</b>` : '';
       html += `<tr><td colspan="2" style="padding-top:8px;font-size:11px;color:var(--accent-cyan);font-weight:bold">⚡ Alargue${resultAStr}</td></tr>`;
