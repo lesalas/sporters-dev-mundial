@@ -311,6 +311,26 @@ async function getMasHistory() {
   } catch(e) { console.error(e); return {}; }
 }
 
+async function getMasAlargueState() {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const snap = await getDoc(doc(db, 'config', 'mas_alargue_state'));
+    if (!snap.exists()) return { pozos: [] };
+    const data = snap.data();
+    return data.pozos !== undefined ? data : { pozos: [] };
+  } catch(e) { console.error(e); return { pozos: [] }; }
+}
+
+async function getMasAlargueHistory() {
+  try {
+    const { db, collection, getDocs } = window._fb;
+    const snap = await getDocs(collection(db, 'masAlargue'));
+    const map = {};
+    snap.docs.forEach(d => { map[d.id] = d.data(); });
+    return map;
+  } catch(e) { console.error(e); return {}; }
+}
+
 async function getAllPicks(users) {
   const results = await Promise.all(users.map(u => getPicks(u)));
   const map = {};
@@ -746,11 +766,85 @@ async function resetMas(matchId) {
   renderMas();
 }
 
+async function settleAlargue(matchId) {
+  if (!adminUnlocked) return;
+  const { db, doc, getDoc, setDoc } = window._fb;
+  const existing = await getDoc(doc(db, 'masAlargue', String(matchId)));
+  if (existing.exists()) { alert('Este alargue ya fue liquidado.'); return; }
+
+  const alargues = await getAlargues();
+  const resultA = alargues[matchId]?.resultadoAlargue;
+  if (!resultA) { alert('Primero guarda el resultado del alargue.'); return; }
+
+  const users = await getAllUsers();
+  const picksMap = await getAllPicks(users);
+
+  const participants = users.filter(u => {
+    const p = picksMap[u][`alargue_${matchId}`];
+    return p && p.home !== '' && p.home !== undefined;
+  });
+
+  const acertantes = participants.filter(u => {
+    const p = picksMap[u][`alargue_${matchId}`];
+    return parseInt(p.home) === resultA.home && parseInt(p.away) === resultA.away;
+  });
+
+  const state = await getMasAlargueState();
+  const pozosAntes = state.pozos || [];
+  const newPool = { matchId, puntos: participants.length * 2, elegibles: participants };
+  const allPozos = [...pozosAntes, newPool];
+
+  const pagos = {};
+  const pozosLiquidados = [];
+  const pozosQuedan = [];
+
+  allPozos.forEach(pozo => {
+    const ganadores = acertantes.filter(u => pozo.elegibles.includes(u));
+    if (ganadores.length > 0) {
+      const premioPerGanador = pozo.puntos / ganadores.length;
+      ganadores.forEach(u => { pagos[u] = (pagos[u] || 0) + premioPerGanador; });
+      pozosLiquidados.push({ ...pozo, ganadores, premioPerGanador });
+    } else {
+      pozosQuedan.push(pozo);
+    }
+  });
+
+  await setDoc(doc(db, 'masAlargue', String(matchId)), {
+    participants,
+    acertantes,
+    pozosAntes,
+    newPool,
+    pozosLiquidados,
+    pozosDespues: pozosQuedan,
+    pagos
+  });
+
+  await setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: pozosQuedan });
+
+  alert('✓ Alargue liquidado');
+  renderAdmin();
+  renderMas();
+}
+
+async function resetAlargue(matchId) {
+  if (!adminUnlocked) return;
+  if (!confirm('¿Revertir esta liquidación de alargue? Los pozos volverán al estado anterior.')) return;
+  const { db, doc, getDoc, setDoc, deleteDoc } = window._fb;
+  const snap = await getDoc(doc(db, 'masAlargue', String(matchId)));
+  if (!snap.exists()) { alert('No hay liquidación de alargue para revertir.'); return; }
+  const s = snap.data();
+  await setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: s.pozosAntes || [] });
+  await deleteDoc(doc(db, 'masAlargue', String(matchId)));
+  alert('✓ Liquidación de alargue revertida. Ya puedes volver a liquidar.');
+  renderAdmin();
+  renderMas();
+}
+
 async function renderMas() {
   const matchMap = {};
   MATCHES.forEach(m => { matchMap[m.id] = m; });
 
-  const [state, masHistory, users, RESULTS] = await Promise.all([getMasState(), getMasHistory(), getAllUsers(), getResults()]);
+  const [state, masHistory, users, RESULTS, alargueState, alargueHistory] = await Promise.all([getMasState(), getMasHistory(), getAllUsers(), getResults(), getMasAlargueState(), getMasAlargueHistory()]);
 
   // Leaderboard: sumar premios del historial
   const balances = {};
@@ -841,6 +935,79 @@ async function renderMas() {
       <div style="font-weight:bold;margin-bottom:6px">${title}${resultScore}${dateLabel}</div>
       <table>
         <tr><td style="color:var(--text-secondary)">Participantes</td><td>${s.participants.join(', ')}</td></tr>
+        <tr><td style="color:var(--text-secondary)">Pozos</td><td>${pozoInfo}</td></tr>
+        <tr><td style="color:var(--text-secondary)">Resultado</td><td>${resultado}</td></tr>
+      </table>
+    </div>`;
+  });
+
+  // — Sección Alargue —
+  html += `<div class="group-title" style="color:var(--accent-cyan)">⚡ MÁS Alargue</div>`;
+
+  // Pozos activos alargue
+  const pozosA = alargueState.pozos || [];
+  let pozosAlargueHtml;
+  if (pozosA.length === 0) {
+    pozosAlargueHtml = '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px">No hay pozos de alargue activos.</div>';
+  } else {
+    const totalPtsA = pozosA.reduce((sum, p) => sum + p.puntos, 0);
+    pozosAlargueHtml = pozosA.map((p, i) =>
+      `<div style="margin-top:10px;padding-top:${i>0?'10px':0};${i>0?'border-top:1px solid var(--border-card)':''}">
+        <span style="font-size:22px;font-weight:bold;color:var(--accent-cyan)">${Number(p.puntos).toFixed(2)} pts</span>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Elegibles: ${p.elegibles.join(', ')}</div>
+      </div>`
+    ).join('') +
+    `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-card);padding-top:6px">Total en juego: ${Number(totalPtsA).toFixed(2)} pts (${pozosA.length} pozo${pozosA.length>1?'s':''})</div>`;
+  }
+  html += `<div class="card" style="text-align:center">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Pozos activos alargue</div>
+    ${pozosAlargueHtml}
+  </div>`;
+
+  // Leaderboard alargue
+  const balancesA = {};
+  users.forEach(u => { balancesA[u] = 0; });
+  Object.values(alargueHistory).forEach(s => {
+    if (s.pagos) {
+      Object.entries(s.pagos).forEach(([u, pts]) => { if (balancesA[u] !== undefined) balancesA[u] += pts; });
+    }
+  });
+  const sortedA = Object.entries(balancesA).sort((a,b) => b[1]-a[1]);
+  html += `<div class="card"><table>
+    <tr><th></th><th>Jugador</th><th class="pts" style="color:var(--accent-cyan)">⚡ pts</th></tr>`;
+  sortedA.forEach(([u,pts],i) => {
+    html += `<tr><td class="pos">${i+1}</td><td>${u}${u===currentUser?' (tú)':''}</td><td class="pts" style="color:var(--accent-cyan)">${Number(pts).toFixed(2)}</td></tr>`;
+  });
+  html += '</table></div>';
+
+  // Historial liquidaciones alargue
+  const settledA = Object.entries(alargueHistory).sort((a, b) => {
+    const skA = (matchMap[Number(a[0])] || {}).sortKey || '99-99T99:99';
+    const skB = (matchMap[Number(b[0])] || {}).sortKey || '99-99T99:99';
+    return skA.localeCompare(skB);
+  });
+  const filteredSettledA = masFilter === 'hoy'
+    ? settledA.filter(([mid]) => {
+        const m = matchMap[Number(mid)];
+        return m && (m.sortKey.startsWith(_todayPfx) || m.sortKey === _tomorrowMidnight);
+      })
+    : settledA;
+  if (filteredSettledA.length === 0) {
+    html += `<div class="card" style="color:var(--text-secondary);text-align:center">${masFilter === 'hoy' ? 'No hay alargues liquidados hoy.' : 'Aún no hay alargues liquidados.'}</div>`;
+  }
+  filteredSettledA.forEach(([mid, s]) => {
+    const m = matchMap[Number(mid)];
+    const title = m ? `⚡ ${m.home} vs ${m.away}` : `⚡ Partido ${mid}`;
+    const dateLabel = m ? `<span style="font-size:11px;color:var(--text-secondary);margin-left:6px">${m.date.split(' · ')[0]}</span>` : '';
+    const ganadores = Object.entries(s.pagos || {}).filter(([,pts]) => pts > 0);
+    const resultado = ganadores.length > 0
+      ? ganadores.map(([u, pts]) => `${u} <b style="color:var(--accent-green)">+${Number(pts).toFixed(2)} pts</b>`).join(', ')
+      : '<span style="color:var(--text-secondary)">Nadie acertó — pozos acumulados</span>';
+    const pozoInfo = `Nuevo pozo: ${Number(s.newPool.puntos).toFixed(2)} pts · Pozos liquidados: ${(s.pozosLiquidados||[]).length}`;
+    html += `<div class="card">
+      <div style="font-weight:bold;margin-bottom:6px;color:var(--accent-cyan)">${title}${dateLabel}</div>
+      <table>
+        <tr><td style="color:var(--text-secondary)">Apostadores</td><td>${(s.participants||[]).join(', ') || '—'}</td></tr>
         <tr><td style="color:var(--text-secondary)">Pozos</td><td>${pozoInfo}</td></tr>
         <tr><td style="color:var(--text-secondary)">Resultado</td><td>${resultado}</td></tr>
       </table>
@@ -1242,8 +1409,17 @@ async function renderAdmin() {
           const pickersA = allUsers.filter(u => { const pA = picksMap[u][`alargue_${m.id}`]; return pA && pA.home !== '' && pA.home !== undefined; });
           alargueAdminBlock += `<div style="color:var(--accent-cyan);font-size:13px;margin-bottom:4px">Resultado alargue: <b>${resultA.home}-${resultA.away}</b></div>`;
           alargueAdminBlock += pickersA.length > 0
-            ? `<div style="font-size:11px;color:var(--text-secondary)">Apostaron: ${pickersA.join(', ')}</div>`
-            : `<div style="font-size:11px;color:var(--text-secondary)">Nadie apostó al alargue.</div>`;
+            ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Apostaron: ${pickersA.join(', ')}</div>`
+            : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Nadie apostó al alargue.</div>`;
+          const sAlargue = masAlargueHistory[String(m.id)];
+          if (sAlargue) {
+            const ganadores = Object.entries(sAlargue.pagos || {}).filter(([,pts]) => pts > 0);
+            const ganStr = ganadores.length > 0 ? ganadores.map(([u,pts]) => `${u} (+${Number(pts).toFixed(2)} pts)`).join(', ') : 'Nadie acertó';
+            alargueAdminBlock += `<div style="font-size:11px;color:var(--accent-green);margin-bottom:4px">✓ Alargue liquidado · ${ganStr}</div>`;
+            alargueAdminBlock += `<button style="background:#415a77;width:auto;padding:6px 14px;font-size:12px;margin-bottom:4px" onclick="resetAlargue(${m.id})">🔄 Reliquidar alargue</button>`;
+          } else if (pickersA.length > 0) {
+            alargueAdminBlock += `<button style="background:var(--accent-violet);width:auto;padding:6px 14px;font-size:12px;margin-bottom:4px" onclick="settleAlargue(${m.id})">💰 Liquidar alargue</button>`;
+          }
         }
         alargueAdminBlock += `</div>`;
       }
@@ -1265,7 +1441,7 @@ async function renderAdmin() {
     </div>`;
   });
   // Sección MÁS
-  const [masState, masHistory, masResults] = await Promise.all([getMasState(), getMasHistory(), getResults()]);
+  const [masState, masHistory, masResults, masAlargueHistory] = await Promise.all([getMasState(), getMasHistory(), getResults(), getMasAlargueHistory()]);
   html += `<div class="group-title">MÁS — Liquidar partidos</div>`;
   const adminPozos = masState.pozos || [];
   if (adminPozos.length === 0) {
