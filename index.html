@@ -1250,13 +1250,12 @@ async function renderTodos() {
   for (const m of filteredSorted) {
     const result = RESULTS[m.id];
     const resultStr = result ? ` · <b style="color:#e63946">${result.home}-${result.away}</b>` : '';
-    const anyPick = users.some(u => { const p = picksMap[u][m.id]; return p && p.home !== '' && p.home !== undefined; });
-    if (!anyPick) continue;
-    html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b>${resultStr} — ${m.group} · ${m.date}</div><table>`;
-    for (const u of users) {
+    const usersConPick = users.filter(u => { const p = picksMap[u][m.id]; return p && p.home !== '' && p.home !== undefined; });
+    if (usersConPick.length === 0) continue;
+    html += `<div class="card"><div class="meta" style="text-align:left; margin-bottom:6px;"><b>${m.home} vs ${m.away}</b>${resultStr} — ${m.group} · ${m.date} <span style="color:var(--text-secondary);font-size:11px">(${usersConPick.length} picks)</span></div><table>`;
+    for (const u of usersConPick) {
       const p = picksMap[u][m.id];
-      const hasPick = p && p.home !== '' && p.home !== undefined;
-      if (!hasPick) continue;
+      const hasPick = true;
       const timeLabel = hasPick && p.savedAt ? `<span style="color:var(--text-secondary);font-size:10px;margin-left:4px">${formatPickTime(p.savedAt)}</span>` : '';
       const val = hasPick ? `${p.home} - ${p.away}${timeLabel}` : '—';
       const pagoIndicator = hasPick
