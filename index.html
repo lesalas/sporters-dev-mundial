@@ -732,7 +732,8 @@ async function settleMas(matchId) {
   const [state, alargueState] = await Promise.all([getMasState(), getMasAlargueState()]);
   const pozosAntesRegular = state.pozos || [];
   const pozosAntesAlargue = alargueState.pozos || [];
-  const newPool = { matchId, puntos: participants.length * 2, elegibles: participants, tipo: 'regular' };
+  const match = MATCHES.find(m => m.id === matchId);
+  const newPool = { matchId, puntos: participants.length * valorFase(match?.group), elegibles: participants, tipo: 'regular' };
   const allPozos = [...pozosAntesRegular, ...pozosAntesAlargue, newPool];
 
   const pagos = {};
@@ -817,7 +818,8 @@ async function settleAlargue(matchId) {
   const [masRegularState, masAlargueStateData] = await Promise.all([getMasState(), getMasAlargueState()]);
   const pozosAntesRegular = masRegularState.pozos || [];
   const pozosAntesAlargue = masAlargueStateData.pozos || [];
-  const newPool = { matchId, puntos: participants.length * 2, elegibles: participants, tipo: 'alargue' };
+  const match = MATCHES.find(m => m.id === matchId);
+  const newPool = { matchId, puntos: participants.length * valorFase(match?.group), elegibles: participants, tipo: 'alargue' };
   const allPozos = [...pozosAntesRegular, ...pozosAntesAlargue, newPool];
 
   const pagos = {};
