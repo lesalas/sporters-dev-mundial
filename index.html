@@ -493,7 +493,7 @@ async function descontarYGuardarPick(username, matchId, home, away) {
     const alreadyPaid = pagosSnap.exists() && !!pagosSnap.data()[`${matchId}_${username}`];
     const isNewPick = !alreadyPaid && (!picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined);
     const match = MATCHES.find(m => m.id === matchId);
-    const costo = costoPick(match?.group);
+    const costo = valorFase(match?.group);
     if (isNewPick && saldoActual < costo) throw new Error('Saldo insuficiente');
     picks[matchId] = { home, away, savedAt: new Date().toISOString() };
     t.set(picksRef, picks);
@@ -557,7 +557,7 @@ async function descontarYGuardarPickAlargue(username, matchId, home, away) {
     const alreadyPaid = !!pagos[`${alKey}_${username}`];
     const isNewPick = !alreadyPaid && (!picks[alKey] || picks[alKey].home === '' || picks[alKey].home === undefined);
     const match = MATCHES.find(m => m.id === matchId);
-    const costo = costoPick(match?.group);
+    const costo = valorFase(match?.group);
     if (isNewPick && saldoActual < costo) throw new Error('Saldo insuficiente');
     picks[alKey] = { home, away, savedAt: new Date().toISOString() };
     t.set(picksRef, picks);
@@ -702,7 +702,7 @@ function isEliminacion(group) {
   return ['Dieciseisavos','Octavos','Cuartos','Semifinal','Final'].includes(group);
 }
 
-function costoPick(group) {
+function valorFase(group) {
   return ['Cuartos','Semifinal','Final'].includes(group) ? 5 : 2;
 }
 
@@ -1106,7 +1106,7 @@ async function renderPartidos() {
     const result = RESULTS[m.id];
     const locked = !!locks[m.id];
     const hasPick = p.home !== '' && p.home !== undefined;
-    const costoM = costoPick(m.group);
+    const costoM = valorFase(m.group);
     const saldoBloqueado = !locked && !hasPick && currentBalance < costoM;
     const playing = !result && isMatchPlaying(m.sortKey);
     const cardState = playing ? 'live' : (locked || result) ? 'closed' : 'pending';
@@ -1212,14 +1212,14 @@ async function renderTabla() {
     const picks = picksMap[u];
     let total = 0;
     let exactos = 0;
-    let bol = 0;
+    let bolPts = 0;
     MATCHES.forEach(m => {
       const result = RESULTS[m.id];
       if (result && picks[m.id]) {
         const pts = calcPoints(picks[m.id], result);
         total += pts;
         if (pts === 1) exactos++;
-        bol++;
+        bolPts += valorFase(m.group);
       }
       if (isEliminacion(m.group) && alargues[m.id]?.resultadoAlargue) {
         const pickA = picks[`alargue_${m.id}`];
@@ -1227,11 +1227,11 @@ async function renderTabla() {
           const ptsA = calcPoints(pickA, alargues[m.id].resultadoAlargue);
           total += ptsA;
           if (ptsA === 1) exactos++;
-          bol++;
+          bolPts += valorFase(m.group);
         }
       }
     });
-    scores.push({user:u, total, exactos, bol, bolPts: bol * 2});
+    scores.push({user:u, total, exactos, bolPts});
   }
   scores.sort((a,b) => b.bolPts - a.bolPts || b.exactos - a.exactos);
   let html = `<div class="card"><table>
