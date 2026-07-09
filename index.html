@@ -492,15 +492,16 @@ async function descontarYGuardarPick(username, matchId, home, away) {
     const picks = picksSnap.exists() ? picksSnap.data() : {};
     const alreadyPaid = pagosSnap.exists() && !!pagosSnap.data()[`${matchId}_${username}`];
     const isNewPick = !alreadyPaid && (!picks[matchId] || picks[matchId].home === '' || picks[matchId].home === undefined);
-    if (isNewPick && saldoActual < 2) throw new Error('Saldo insuficiente');
+    const match = MATCHES.find(m => m.id === matchId);
+    const costo = costoPick(match?.group);
+    if (isNewPick && saldoActual < costo) throw new Error('Saldo insuficiente');
     picks[matchId] = { home, away, savedAt: new Date().toISOString() };
     t.set(picksRef, picks);
     if (isNewPick) {
-      const newSaldo = saldoActual - 2;
+      const newSaldo = saldoActual - costo;
       t.set(userRef, { name: username, saldoActual: newSaldo }, { merge: true });
-      const match = MATCHES.find(m => m.id === matchId);
       const nota = match ? `Pronóstico: ${match.home} vs ${match.away}` : `Pronóstico partido ${matchId}`;
-      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: 2, fecha: serverTimestamp(), nota, partidoId: matchId });
+      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: costo, fecha: serverTimestamp(), nota, partidoId: matchId });
       const pagos = pagosSnap.exists() ? pagosSnap.data() : {};
       pagos[`${matchId}_${username}`] = true;
       t.set(pagosRef, pagos);
@@ -555,15 +556,16 @@ async function descontarYGuardarPickAlargue(username, matchId, home, away) {
     const pagos = pagosSnap.exists() ? pagosSnap.data() : {};
     const alreadyPaid = !!pagos[`${alKey}_${username}`];
     const isNewPick = !alreadyPaid && (!picks[alKey] || picks[alKey].home === '' || picks[alKey].home === undefined);
-    if (isNewPick && saldoActual < 2) throw new Error('Saldo insuficiente');
+    const match = MATCHES.find(m => m.id === matchId);
+    const costo = costoPick(match?.group);
+    if (isNewPick && saldoActual < costo) throw new Error('Saldo insuficiente');
     picks[alKey] = { home, away, savedAt: new Date().toISOString() };
     t.set(picksRef, picks);
     if (isNewPick) {
-      const newSaldo = saldoActual - 2;
+      const newSaldo = saldoActual - costo;
       t.set(userRef, { name: username, saldoActual: newSaldo }, { merge: true });
-      const match = MATCHES.find(m => m.id === matchId);
       const nota = match ? `Pronóstico alargue: ${match.home} vs ${match.away}` : `Pronóstico alargue partido ${matchId}`;
-      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: 2, fecha: serverTimestamp(), nota, partidoId: matchId });
+      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: costo, fecha: serverTimestamp(), nota, partidoId: matchId });
       pagos[`${alKey}_${username}`] = true;
       t.set(pagosRef, pagos);
       return newSaldo;
@@ -698,6 +700,10 @@ function calcPoints(pick, result) {
 
 function isEliminacion(group) {
   return ['Dieciseisavos','Octavos','Cuartos','Semifinal','Final'].includes(group);
+}
+
+function costoPick(group) {
+  return ['Cuartos','Semifinal','Final'].includes(group) ? 5 : 2;
 }
 
 async function settleMas(matchId) {
@@ -1100,7 +1106,8 @@ async function renderPartidos() {
     const result = RESULTS[m.id];
     const locked = !!locks[m.id];
     const hasPick = p.home !== '' && p.home !== undefined;
-    const saldoBloqueado = !locked && !hasPick && currentBalance < 2;
+    const costoM = costoPick(m.group);
+    const saldoBloqueado = !locked && !hasPick && currentBalance < costoM;
     const playing = !result && isMatchPlaying(m.sortKey);
     const cardState = playing ? 'live' : (locked || result) ? 'closed' : 'pending';
     const metaDetail = m.date.includes('·') ? m.date.split(' · ').slice(1).join(' · ') : '';
@@ -1130,15 +1137,15 @@ async function renderPartidos() {
       if (disponible || hasPickA || resultA) {
         let inner = '';
         if (disponible && !hasPickA) {
-          const btnDisabled = currentBalance < 2 ? 'disabled' : '';
+          const btnDisabled = currentBalance < costoM ? 'disabled' : '';
           inner = `
             <div class="match" style="margin:8px 0">
               <input type="number" min="0" id="ha_${m.id}" placeholder="0" style="width:50px;background:#0B0F1A;color:#F1F5F9;border:1px solid var(--accent-cyan);border-radius:6px;text-align:center;padding:6px">
               <span class="vs">-</span>
               <input type="number" min="0" id="aa_${m.id}" placeholder="0" style="width:50px;background:#0B0F1A;color:#F1F5F9;border:1px solid var(--accent-cyan);border-radius:6px;text-align:center;padding:6px">
             </div>
-            ${currentBalance < 2 ? '<div style="color:var(--accent-coral);font-size:12px;text-align:center;margin-bottom:6px">Saldo insuficiente para apostar al alargue</div>' : ''}
-            <button onclick="apostarAlargue(${m.id})" ${btnDisabled} style="background:var(--accent-violet)">Apostar al alargue (+2 Bs)</button>`;
+            ${currentBalance < costoM ? '<div style="color:var(--accent-coral);font-size:12px;text-align:center;margin-bottom:6px">Saldo insuficiente para apostar al alargue</div>' : ''}
+            <button onclick="apostarAlargue(${m.id})" ${btnDisabled} style="background:var(--accent-violet)">Apostar al alargue (+${costoM} Bs)</button>`;
         } else if (hasPickA) {
           const resultLabel = resultA ? ` · Resultado: ${resultA.home}-${resultA.away}` : (!disponible ? ' · Cerrado' : '');
           const ptsLabel = resultA ? ` · Tus puntos: ${calcPoints(pickA, resultA)}` : '';
