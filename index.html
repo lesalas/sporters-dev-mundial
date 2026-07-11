@@ -414,6 +414,59 @@ async function getAlargues() {
   } catch(e) { console.error(e); return {}; }
 }
 
+async function getOvertime() {
+  try {
+    const { db, doc, getDoc } = window._fb;
+    const snap = await getDoc(doc(db, 'config', 'overtime'));
+    return snap.exists() ? snap.data() : {};
+  } catch(e) { console.error(e); return {}; }
+}
+
+async function setOvertimeEntry(matchId, patch) {
+  const { db, doc, getDoc, setDoc } = window._fb;
+  const ref = doc(db, 'config', 'overtime');
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
+  data[matchId] = { ...(data[matchId] || {}), ...patch };
+  await setDoc(ref, data);
+  return data[matchId];
+}
+
+async function deleteOvertimeEntry(matchId) {
+  const { db, doc, getDoc, setDoc } = window._fb;
+  const ref = doc(db, 'config', 'overtime');
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
+  delete data[matchId];
+  await setDoc(ref, data);
+}
+
+async function getServerNowMs() {
+  const { db, doc, setDoc, getDoc, serverTimestamp } = window._fb;
+  const ref = doc(db, 'config', 'clock');
+  await setDoc(ref, { now: serverTimestamp() });
+  const snap = await getDoc(ref);
+  return snap.data().now.toMillis();
+}
+
+function isOvertimeWindowOpen(entry, nowMs) {
+  return !!entry && !entry.cerradaManual && nowMs < entry.ventanaCierraEnMs;
+}
+
+const VENTANA_ALARGUE_MS = 10 * 60 * 1000;
+
+async function abrirVentanaAlargue(matchId, home, away) {
+  const { db, doc, getDoc, serverTimestamp } = window._fb;
+  await setOvertimeEntry(matchId, {
+    resultado90: { home: parseInt(home), away: parseInt(away) },
+    ventanaAbiertaEn: serverTimestamp(),
+    cerradaManual: false,
+  });
+  const snap = await getDoc(doc(db, 'config', 'overtime'));
+  const abiertaEnMs = snap.data()[matchId].ventanaAbiertaEn.toMillis();
+  await setOvertimeEntry(matchId, { ventanaCierraEnMs: abiertaEnMs + VENTANA_ALARGUE_MS });
+}
+
 async function setPago(matchId, userName, paid) {
   try {
     const { db, doc, setDoc, getDoc } = window._fb;
@@ -509,90 +562,6 @@ async function descontarYGuardarPick(username, matchId, home, away) {
     }
     return saldoActual;
   });
-}
-
-async function setAlargueDisponible(matchId, disponible) {
-  try {
-    const { db, doc, getDoc, setDoc } = window._fb;
-    const ref = doc(db, 'config', 'alargues');
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? snap.data() : {};
-    data[matchId] = { ...(data[matchId] || {}), disponible };
-    await setDoc(ref, data);
-    renderAdmin();
-  } catch(e) { console.error(e); alert('Error al actualizar alargue.'); }
-}
-
-async function setResultadoAlargue(matchId, home, away) {
-  try {
-    const { db, doc, getDoc, setDoc } = window._fb;
-    const ref = doc(db, 'config', 'alargues');
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? snap.data() : {};
-    data[matchId] = { ...(data[matchId] || {}), resultadoAlargue: { home: parseInt(home), away: parseInt(away) } };
-    await setDoc(ref, data);
-    renderAdmin();
-  } catch(e) { console.error(e); alert('Error al guardar resultado de alargue.'); }
-}
-
-async function guardarResultadoAlargue(matchId) {
-  const h = document.getElementById(`rah_${matchId}`)?.value;
-  const a = document.getElementById(`raa_${matchId}`)?.value;
-  if (h === '' || a === '' || h === undefined) { alert('Ingresá el resultado del alargue.'); return; }
-  await setResultadoAlargue(matchId, h, a);
-}
-
-async function descontarYGuardarPickAlargue(username, matchId, home, away) {
-  const { db, doc, collection, runTransaction, serverTimestamp } = window._fb;
-  const userRef   = doc(db, 'users', username);
-  const picksRef  = doc(db, 'picks', username);
-  const pagosRef  = doc(db, 'config', 'pagos');
-  const movRef    = doc(collection(db, 'movimientosSaldo'));
-  const alKey     = `alargue_${matchId}`;
-  return await runTransaction(db, async (t) => {
-    const [userSnap, picksSnap, pagosSnap] = await Promise.all([t.get(userRef), t.get(picksRef), t.get(pagosRef)]);
-    const saldoActual = userSnap.exists() ? (userSnap.data().saldoActual || 0) : 0;
-    const picks = picksSnap.exists() ? picksSnap.data() : {};
-    const pagos = pagosSnap.exists() ? pagosSnap.data() : {};
-    const alreadyPaid = !!pagos[`${alKey}_${username}`];
-    const isNewPick = !alreadyPaid && (!picks[alKey] || picks[alKey].home === '' || picks[alKey].home === undefined);
-    const match = MATCHES.find(m => m.id === matchId);
-    const costo = valorFase(match?.group);
-    if (isNewPick && saldoActual < costo) throw new Error('Saldo insuficiente');
-    picks[alKey] = { home, away, savedAt: new Date().toISOString() };
-    t.set(picksRef, picks);
-    if (isNewPick) {
-      const newSaldo = saldoActual - costo;
-      t.set(userRef, { name: username, saldoActual: newSaldo }, { merge: true });
-      const nota = match ? `Pronóstico alargue: ${match.home} vs ${match.away}` : `Pronóstico alargue partido ${matchId}`;
-      t.set(movRef, { usuarioId: username, tipo: 'consumo', monto: costo, fecha: serverTimestamp(), nota, partidoId: matchId });
-      pagos[`${alKey}_${username}`] = true;
-      t.set(pagosRef, pagos);
-      return newSaldo;
-    }
-    return saldoActual;
-  });
-}
-
-async function apostarAlargue(matchId) {
-  const home = document.getElementById(`ha_${matchId}`)?.value;
-  const away = document.getElementById(`aa_${matchId}`)?.value;
-  if (home === '' || away === '' || home === undefined) { alert('Ingresá el marcador del alargue.'); return; }
-  let newBalance;
-  try {
-    newBalance = await descontarYGuardarPickAlargue(currentUser, matchId, home, away);
-  } catch(e) {
-    if (e.message === 'Saldo insuficiente') {
-      alert('Saldo insuficiente para apostar al alargue.');
-    } else {
-      console.error(e);
-      alert('Error al guardar el pronóstico de alargue.');
-    }
-    return;
-  }
-  currentBalance = newBalance;
-  updateBalanceDisplay(newBalance);
-  renderPartidos();
 }
 
 async function registerUser(username) {
@@ -791,92 +760,6 @@ async function resetMas(matchId) {
   renderMas();
 }
 
-async function settleAlargue(matchId) {
-  if (!adminUnlocked) return;
-  const { db, doc, getDoc, setDoc } = window._fb;
-  const existing = await getDoc(doc(db, 'masAlargue', String(matchId)));
-  if (existing.exists()) { alert('Este alargue ya fue liquidado.'); return; }
-
-  const alargues = await getAlargues();
-  const resultA = alargues[matchId]?.resultadoAlargue;
-  if (!resultA) { alert('Primero guarda el resultado del alargue.'); return; }
-
-  const users = await getAllUsers();
-  const picksMap = await getAllPicks(users);
-
-  const participants = users.filter(u => {
-    const p = picksMap[u][`alargue_${matchId}`];
-    return p && p.home !== '' && p.home !== undefined;
-  });
-
-  const acertantes = participants.filter(u => {
-    const p = picksMap[u][`alargue_${matchId}`];
-    return parseInt(p.home) === resultA.home && parseInt(p.away) === resultA.away;
-  });
-
-  // Combinar TODOS los pozos: regulares + alargue acumulados + nuevo pozo de este alargue
-  const [masRegularState, masAlargueStateData] = await Promise.all([getMasState(), getMasAlargueState()]);
-  const pozosAntesRegular = masRegularState.pozos || [];
-  const pozosAntesAlargue = masAlargueStateData.pozos || [];
-  const match = MATCHES.find(m => m.id === matchId);
-  const newPool = { matchId, puntos: participants.length * valorFase(match?.group), elegibles: participants, tipo: 'alargue' };
-  const allPozos = [...pozosAntesRegular, ...pozosAntesAlargue, newPool];
-
-  const pagos = {};
-  let pozosLiquidados = [];
-  let pozosQuedan = [];
-
-  // El ganador del alargue se lleva TODOS los pozos disponibles (sin filtro de elegibles)
-  if (acertantes.length > 0) {
-    const totalPuntos = allPozos.reduce((sum, p) => sum + p.puntos, 0);
-    const premioPerGanador = totalPuntos / acertantes.length;
-    acertantes.forEach(u => { pagos[u] = premioPerGanador; });
-    pozosLiquidados = allPozos.map(p => ({ ...p, ganadores: acertantes, premioPerGanador }));
-    pozosQuedan = [];
-  } else {
-    pozosQuedan = allPozos;
-    pozosLiquidados = [];
-  }
-
-  await setDoc(doc(db, 'masAlargue', String(matchId)), {
-    participants,
-    acertantes,
-    pozosAntesRegular,
-    pozosAntesAlargue,
-    newPool,
-    pozosLiquidados,
-    pozosDespues: pozosQuedan,
-    pagos
-  });
-
-  // Los pozos restantes pasan al estado de alargue; el estado regular se limpia
-  await Promise.all([
-    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: pozosQuedan }),
-    setDoc(doc(db, 'config', 'mas_state'), { pozos: [] })
-  ]);
-
-  alert('✓ Alargue liquidado');
-  renderAdmin();
-  renderMas();
-}
-
-async function resetAlargue(matchId) {
-  if (!adminUnlocked) return;
-  if (!confirm('¿Revertir esta liquidación de alargue? Los pozos volverán al estado anterior.')) return;
-  const { db, doc, getDoc, setDoc, deleteDoc } = window._fb;
-  const snap = await getDoc(doc(db, 'masAlargue', String(matchId)));
-  if (!snap.exists()) { alert('No hay liquidación de alargue para revertir.'); return; }
-  const s = snap.data();
-  // Restaurar AMBOS estados al momento previo a la liquidación
-  await Promise.all([
-    setDoc(doc(db, 'config', 'mas_state'), { pozos: s.pozosAntesRegular || [] }),
-    setDoc(doc(db, 'config', 'mas_alargue_state'), { pozos: s.pozosAntesAlargue || [] }),
-    deleteDoc(doc(db, 'masAlargue', String(matchId)))
-  ]);
-  alert('✓ Liquidación de alargue revertida. Ya puedes volver a liquidar.');
-  renderAdmin();
-  renderMas();
-}
 
 async function renderMas() {
   const matchMap = {};
@@ -1088,7 +971,7 @@ function setAdminFilter(f)    { adminFilter    = f; renderAdmin();    }
 function setMasFilter(f)      { masFilter      = f; renderMas();      }
 
 async function renderPartidos() {
-  const [picks, locks, RESULTS, alargues] = await Promise.all([getPicks(currentUser), getLocks(), getResults(), getAlargues()]);
+  const [picks, locks, RESULTS, overtime] = await Promise.all([getPicks(currentUser), getLocks(), getResults(), getOvertime()]);
   const sorted = [...MATCHES].sort((a,b) => a.sortKey.localeCompare(b.sortKey));
   const filteredSorted = applyDateFilter(sorted, partidosFilter);
   let html = `<div style="display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:10px;margin-bottom:14px">${filterBarHTML(partidosFilter,'setPartidosFilter')}</div>`;
@@ -1106,7 +989,11 @@ async function renderPartidos() {
     }
     const p = picks[m.id] || {home:'', away:''};
     const result = RESULTS[m.id];
-    const locked = !!locks[m.id];
+    const ot = isEliminacion(m.group) ? overtime[m.id] : null;
+    const overtimeActive = !!(ot && !result);
+    const overtimeWindowOpen = overtimeActive && isOvertimeWindowOpen(ot, Date.now());
+    let locked = !!locks[m.id];
+    if (overtimeWindowOpen) locked = false;
     const hasPick = p.home !== '' && p.home !== undefined;
     const costoM = valorFase(m.group);
     const saldoBloqueado = !locked && !hasPick && currentBalance < costoM;
@@ -1116,6 +1003,15 @@ async function renderPartidos() {
     const savedAtLabel = p.savedAt ? ` · Guardado ${formatPickTime(p.savedAt)}` : '';
     const inputDisabled = locked || saldoBloqueado ? 'disabled' : '';
     const inputClass = cardState === 'pending' && !locked && !saldoBloqueado ? 'class="match-input-pending"' : '';
+    let overtimeBanner = '';
+    if (overtimeActive) {
+      const cierraLabel = ot.ventanaCierraEnMs
+        ? new Date(ot.ventanaCierraEnMs).toLocaleTimeString('es-BO', {hour:'2-digit', minute:'2-digit'})
+        : '';
+      overtimeBanner = overtimeWindowOpen
+        ? `<div style="color:var(--accent-cyan);font-size:12px;text-align:center;margin-top:4px">⚡ Empate 90' (${ot.resultado90.home}-${ot.resultado90.away}) — podés modificar tu pronóstico hasta ${cierraLabel}</div>`
+        : `<div style="color:var(--text-secondary);font-size:12px;text-align:center;margin-top:4px">⏳ Empate 90' (${ot.resultado90.home}-${ot.resultado90.away}) — esperando resultado final del alargue</div>`;
+    }
     html += `
     <div class="card match-card ${cardState}">
       <div class="match">
@@ -1127,43 +1023,9 @@ async function renderPartidos() {
       </div>
       <div class="meta">${m.group}${metaDetail ? ` · ${metaDetail}` : ''}${savedAtLabel}${locked ? ' · 🔒 Cerrado' : ''}${playing ? ' · <span class="live-indicator">🟢 En vivo</span>' : ''}${result ? ` · Resultado: ${result.home}-${result.away}` : ''}</div>
       ${saldoBloqueado ? '<div style="color:var(--accent-coral);font-size:12px;text-align:center;margin-top:4px">Saldo insuficiente. Recarga enviando tu comprobante.</div>' : ''}
+      ${overtimeBanner}
       ${result ? `<div class="result" style="text-align:center">Tus puntos: ${calcPoints({home:p.home, away:p.away}, result)}</div>` : ''}
     </div>`;
-
-    if (isEliminacion(m.group)) {
-      const alargueData = alargues[m.id];
-      const disponible = !!alargueData?.disponible;
-      const resultA = alargueData?.resultadoAlargue;
-      const pickA = picks[`alargue_${m.id}`];
-      const hasPickA = pickA && pickA.home !== '' && pickA.home !== undefined;
-      if (disponible || hasPickA || resultA) {
-        let inner = '';
-        if (disponible && !hasPickA) {
-          const btnDisabled = currentBalance < costoM ? 'disabled' : '';
-          inner = `
-            <div class="match" style="margin:8px 0">
-              <input type="number" min="0" id="ha_${m.id}" placeholder="0" style="width:50px;background:#0B0F1A;color:#F1F5F9;border:1px solid var(--accent-cyan);border-radius:6px;text-align:center;padding:6px">
-              <span class="vs">-</span>
-              <input type="number" min="0" id="aa_${m.id}" placeholder="0" style="width:50px;background:#0B0F1A;color:#F1F5F9;border:1px solid var(--accent-cyan);border-radius:6px;text-align:center;padding:6px">
-            </div>
-            ${currentBalance < costoM ? '<div style="color:var(--accent-coral);font-size:12px;text-align:center;margin-bottom:6px">Saldo insuficiente para apostar al alargue</div>' : ''}
-            <button onclick="apostarAlargue(${m.id})" ${btnDisabled} style="background:var(--accent-violet)">Apostar al alargue (+${costoM} Bs)</button>`;
-        } else if (hasPickA) {
-          const resultLabel = resultA ? ` · Resultado: ${resultA.home}-${resultA.away}` : (!disponible ? ' · Cerrado' : '');
-          const ptsLabel = resultA ? ` · Tus puntos: ${calcPoints(pickA, resultA)}` : '';
-          inner = `
-            <div style="text-align:center;margin:8px 0">
-              <span style="font-size:20px;font-weight:bold;color:var(--text-primary)">${pickA.home} - ${pickA.away}</span>
-            </div>
-            <div class="meta" style="text-align:center">${resultLabel}${ptsLabel}</div>`;
-        }
-        html += `
-        <div style="border:1px dashed var(--accent-cyan);border-radius:8px;padding:10px;margin-top:8px">
-          <div style="font-size:11px;font-weight:bold;color:var(--accent-cyan);margin-bottom:4px">⚡ ALARGUE</div>
-          ${inner}
-        </div>`;
-      }
-    }
   });
   document.getElementById('partidos').innerHTML = html;
 }
@@ -1176,7 +1038,19 @@ async function updatePick(matchId) {
   clearTimeout(pickDebounceTimers[matchId]);
   pickDebounceTimers[matchId] = setTimeout(async () => {
     const locks = await getLocks();
-    if (locks[matchId]) { alert('Este partido ya está cerrado.'); init(); return; }
+    if (locks[matchId]) {
+      const match = MATCHES.find(m => m.id === matchId);
+      let allowed = false;
+      if (isEliminacion(match?.group)) {
+        const [overtime, results] = await Promise.all([getOvertime(), getResults()]);
+        const ot = overtime[matchId];
+        if (ot && !results[matchId]) {
+          const nowMs = await getServerNowMs();
+          allowed = isOvertimeWindowOpen(ot, nowMs);
+        }
+      }
+      if (!allowed) { alert('Este partido ya está cerrado.'); init(); return; }
+    }
     const home = document.getElementById('h_'+matchId).value;
     const away = document.getElementById('a_'+matchId).value;
     if (home === '' || away === '') return;
@@ -1319,7 +1193,7 @@ async function _renderAdminInner() {
       </div>`;
     return;
   }
-  const [locks, RESULTS, allUsers, pagos, allUsersData, alargues, masAlargueHistory] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos(), getAllUsersData(), getAlargues(), getMasAlargueHistory()]);
+  const [locks, RESULTS, allUsers, pagos, allUsersData, alargues, masAlargueHistory, overtime] = await Promise.all([getLocks(), getResults(), getAllUsers(), getPagos(), getAllUsersData(), getAlargues(), getMasAlargueHistory(), getOvertime()]);
   const picksMap = await getAllPicks(allUsers);
 
   // — Sección saldos —
@@ -1412,49 +1286,45 @@ async function _renderAdminInner() {
       });
       pagosBlock += `</table></div>`;
     }
-    let alargueAdminBlock = '';
-    if (isEliminacion(m.group) && r.home !== '') {
-      const alargueData = alargues[m.id];
-      const disponible = !!alargueData?.disponible;
+    let overtimeAdminBlock = '';
+    const otData = overtime[m.id];
+    if (isEliminacion(m.group) && otData && r.home === '') {
+      const windowOpen = isOvertimeWindowOpen(otData, Date.now());
+      const cierraLabel = otData.ventanaCierraEnMs
+        ? new Date(otData.ventanaCierraEnMs).toLocaleTimeString('es-BO', {hour:'2-digit', minute:'2-digit'})
+        : '';
+      overtimeAdminBlock = `<div style="margin-top:8px;border-top:1px solid var(--border-card);padding-top:8px">
+        <div style="font-size:12px;font-weight:bold;color:var(--accent-cyan);margin-bottom:6px">⚡ Alargue</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Empate en 90 min: <b>${otData.resultado90.home}-${otData.resultado90.away}</b> · nadie acertó el marcador exacto</div>
+        <div style="font-size:11px;color:${windowOpen ? 'var(--accent-cyan)' : 'var(--text-secondary)'};margin-bottom:6px">
+          ${windowOpen ? `Ventana de edición abierta hasta ${cierraLabel}` : 'Ventana de edición cerrada · esperando resultado final del alargue'}
+        </div>
+        ${windowOpen ? `<button style="background:var(--accent-coral);width:auto;padding:6px 14px;font-size:12px;margin-bottom:6px" onclick="cerrarVentanaAhora(${m.id})">🔒 Cerrar edición ahora</button>` : ''}
+        <div><a href="#" onclick="corregirMarcador90(${m.id}); return false;" style="font-size:11px;color:var(--text-secondary)">↩ Corregir marcador de 90'</a></div>
+      </div>`;
+    }
+    let legacyAlargueBlock = '';
+    const alargueData = alargues[m.id];
+    if (isEliminacion(m.group) && alargueData) {
       const resultA = alargueData?.resultadoAlargue;
-      if (r.home == r.away || alargueData) {
-        alargueAdminBlock = `<div style="margin-top:8px;border-top:1px solid var(--border-card);padding-top:8px">
-          <div style="font-size:12px;font-weight:bold;color:var(--accent-cyan);margin-bottom:6px">⚡ Alargue</div>`;
-        if (r.home == r.away && !alargueData) {
-          alargueAdminBlock += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Empate en 90 min.</div>`;
+      legacyAlargueBlock = `<div style="margin-top:8px;border-top:1px solid var(--border-card);padding-top:8px">
+        <div style="font-size:12px;font-weight:bold;color:var(--accent-cyan);margin-bottom:6px">⚡ Alargue (histórico)</div>`;
+      if (resultA) {
+        const pickersA = allUsers.filter(u => { const pA = picksMap[u][`alargue_${m.id}`]; return pA && pA.home !== '' && pA.home !== undefined; });
+        legacyAlargueBlock += `<div style="color:var(--accent-cyan);font-size:13px;margin-bottom:4px">Resultado alargue: <b>${resultA.home}-${resultA.away}</b></div>`;
+        legacyAlargueBlock += pickersA.length > 0
+          ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Apostaron: ${pickersA.join(', ')}</div>`
+          : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Nadie apostó al alargue.</div>`;
+        const sAlargue = masAlargueHistory[String(m.id)];
+        if (sAlargue) {
+          const ganadores = Object.entries(sAlargue.pagos || {}).filter(([,pts]) => pts > 0);
+          const ganStr = ganadores.length > 0 ? ganadores.map(([u,pts]) => `${u} (+${Number(pts).toFixed(2)} pts)`).join(', ') : 'Nadie acertó';
+          legacyAlargueBlock += `<div style="font-size:11px;color:var(--accent-green);margin-bottom:4px">✓ Alargue liquidado · ${ganStr}</div>`;
         }
-        if (!disponible && !resultA) {
-          alargueAdminBlock += `<button style="background:var(--accent-cyan);color:#000;width:auto;padding:6px 14px;font-size:12px;margin-bottom:6px" onclick="setAlargueDisponible(${m.id}, true)">⚡ Abrir alargue</button>`;
-        }
-        if (disponible) {
-          alargueAdminBlock += `<button style="background:var(--accent-coral);width:auto;padding:6px 14px;font-size:12px;margin-bottom:6px" onclick="setAlargueDisponible(${m.id}, false)">🔒 Cerrar alargue</button>`;
-        }
-        if (alargueData && !disponible && !resultA) {
-          alargueAdminBlock += `<div class="match" style="margin-top:4px">
-            <input type="number" min="0" id="rah_${m.id}" placeholder="Local" style="width:50px">
-            <span class="vs">-</span>
-            <input type="number" min="0" id="raa_${m.id}" placeholder="Visita" style="width:50px">
-            <button style="width:auto;flex:1;margin:0;font-size:12px" onclick="guardarResultadoAlargue(${m.id})">Guardar resultado alargue</button>
-          </div>`;
-        }
-        if (resultA) {
-          const pickersA = allUsers.filter(u => { const pA = picksMap[u][`alargue_${m.id}`]; return pA && pA.home !== '' && pA.home !== undefined; });
-          alargueAdminBlock += `<div style="color:var(--accent-cyan);font-size:13px;margin-bottom:4px">Resultado alargue: <b>${resultA.home}-${resultA.away}</b></div>`;
-          alargueAdminBlock += pickersA.length > 0
-            ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Apostaron: ${pickersA.join(', ')}</div>`
-            : `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Nadie apostó al alargue.</div>`;
-          const sAlargue = masAlargueHistory[String(m.id)];
-          if (sAlargue) {
-            const ganadores = Object.entries(sAlargue.pagos || {}).filter(([,pts]) => pts > 0);
-            const ganStr = ganadores.length > 0 ? ganadores.map(([u,pts]) => `${u} (+${Number(pts).toFixed(2)} pts)`).join(', ') : 'Nadie acertó';
-            alargueAdminBlock += `<div style="font-size:11px;color:var(--accent-green);margin-bottom:4px">✓ Alargue liquidado · ${ganStr}</div>`;
-            alargueAdminBlock += `<button style="background:#415a77;width:auto;padding:6px 14px;font-size:12px;margin-bottom:4px" onclick="resetAlargue(${m.id})">🔄 Reliquidar alargue</button>`;
-          } else if (pickersA.length > 0) {
-            alargueAdminBlock += `<button style="background:var(--accent-violet);width:auto;padding:6px 14px;font-size:12px;margin-bottom:4px" onclick="settleAlargue(${m.id})">💰 Liquidar alargue</button>`;
-          }
-        }
-        alargueAdminBlock += `</div>`;
+      } else {
+        legacyAlargueBlock += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Empate en 90 min (sistema anterior, sin resultado de alargue cargado).</div>`;
       }
+      legacyAlargueBlock += `</div>`;
     }
     html += `
     <div class="card">
@@ -1463,13 +1333,14 @@ async function _renderAdminInner() {
         <input type="number" min="0" id="rh_${m.id}" value="${r.home}" style="width:50px">
         <span class="vs">-</span>
         <input type="number" min="0" id="ra_${m.id}" value="${r.away}" style="width:50px">
-        <button style="width:auto; flex:1; margin:0;" onclick="saveResult(${m.id})">Guardar resultado</button>
+        <button style="width:auto; flex:1; margin:0;" onclick="guardarResultado(${m.id})">Guardar resultado</button>
       </div>
       <button style="background:${locked?'var(--accent-green)':'var(--accent-coral)'}" onclick="toggleLock(${m.id}, ${!locked})">
         ${locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
       </button>
       ${pagosBlock}
-      ${alargueAdminBlock}
+      ${overtimeAdminBlock}
+      ${legacyAlargueBlock}
     </div>`;
   });
   // Sección MÁS
@@ -1543,10 +1414,39 @@ async function togglePago(matchId, userName, paid) {
   renderAdmin();
 }
 
-async function saveResult(matchId) {
+async function guardarResultado(matchId) {
   const h = document.getElementById('rh_'+matchId).value;
   const a = document.getElementById('ra_'+matchId).value;
-  await setResult(matchId, h, a);
+  const match = MATCHES.find(m => m.id === matchId);
+  const overtime = await getOvertime();
+  const yaAbierto = !!overtime[matchId];
+  const esEmpate = h !== '' && a !== '' && h === a;
+
+  let necesitaAlargue = false;
+  if (isEliminacion(match?.group) && esEmpate && !yaAbierto) {
+    const users = await getAllUsers();
+    const picksMap = await getAllPicks(users);
+    const resultCandidato = { home: parseInt(h), away: parseInt(a) };
+    const hayAcierto = users.some(u => calcPoints(picksMap[u][matchId] || {}, resultCandidato) === 1);
+    necesitaAlargue = !hayAcierto;
+  }
+
+  if (necesitaAlargue) {
+    await abrirVentanaAlargue(matchId, h, a);
+  } else {
+    await setResult(matchId, h, a);
+  }
+  await renderAdmin();
+}
+
+async function cerrarVentanaAhora(matchId) {
+  await setOvertimeEntry(matchId, { cerradaManual: true });
+  await renderAdmin();
+}
+
+async function corregirMarcador90(matchId) {
+  if (!confirm('¿Corregir el marcador de los 90\'? Se borra la ventana de alargue abierta para este partido.')) return;
+  await deleteOvertimeEntry(matchId);
   await renderAdmin();
 }
 
