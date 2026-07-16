@@ -260,7 +260,8 @@ MATCHES.push(
   {id:_id++, group:"Cuartos", home:"Argentina", away:"Suiza",       date:"Sáb 11/07 · 21:00 · Kansas City",  sortKey:"07-11T21:00"},
   {id:_id++, group:"Semifinal", home:"Francia", away:"España", date:"Mar 14/07 · 15:00 · Dallas", sortKey:'07-14T15:00'},
   {id:_id++, group:"Semifinal", home:"Inglaterra", away:"Argentina", date:"Mié 15/07 · 15:00 · Atlanta", sortKey:'07-15T15:00'},
-  {id:_id++, group:"Final", home:"FinalistaA", away:"FinalistaB", date:"19 jul", sortKey:'99-99T99:99'}
+  {id:_id++, group:"Tercer puesto", home:"Francia", away:"Inglaterra", date:"Sáb 18/07 · 17:00 · Miami", sortKey:'07-18T17:00'},
+  {id:_id++, group:"Final", home:"España", away:"Argentina", date:"Dom 19/07 · 15:00 · Nueva York", sortKey:'07-19T15:00'}
 );
 
 // Resultados y bloqueos ahora se manejan en Firestore (colección "config")
@@ -669,11 +670,11 @@ function calcPoints(pick, result) {
 }
 
 function isEliminacion(group) {
-  return ['Dieciseisavos','Octavos','Cuartos','Semifinal','Final'].includes(group);
+  return ['Dieciseisavos','Octavos','Cuartos','Semifinal','Tercer puesto','Final'].includes(group);
 }
 
 function valorFase(group) {
-  return ['Cuartos','Semifinal','Final'].includes(group) ? 5 : 2;
+  return ['Cuartos','Semifinal','Tercer puesto','Final'].includes(group) ? 5 : 2;
 }
 
 async function settleMas(matchId) {
